@@ -36,6 +36,21 @@
 `src/renderer/src/styles.css` 里的一切都是**占位**。真正的视觉来自 Organic
 设计系统,经 Claude Design 出稿后整体替换。改样式前先看 `docs/DESIGN-SPEC.md`。
 
+## 改依赖之后必须全量重装
+
+**不要**用增量 `npm install <pkg>` 之后直接提交锁文件。electron-builder 有一批
+平台相关的可选依赖(`@electron/windows-sign`、`postject`、`cross-dirname` 等),
+增量安装和 `npm install --package-lock-only` 都不会把它们写进锁文件,
+但 runner 上的 `npm ci` 会严格校验并因此失败(报 `EUSAGE ... Missing: ... from lock file`)。
+
+只有**真实的全量安装**才会做平台求值、生成正确的锁文件:
+
+```bash
+rm -rf node_modules package-lock.json && npm install
+```
+
+这个坑已经让 CI 挂过两次。
+
 ## 提交前
 
 ```bash
@@ -43,4 +58,5 @@ npm run typecheck
 npm run build
 ```
 
-两条都必须干净。
+两条都必须干净。改动涉及功能链路时再跑 `npm run smoke` 和 `npm run e2e`
+(会产生真实 API 调用,所以不进 CI)。
