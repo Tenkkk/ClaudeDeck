@@ -51,17 +51,28 @@ npm run dev
 > 镜像**没有**写进仓库的 `.npmrc`:CI 构建的是用户会下载安装的产物,
 > 那条链路应当只从官方源取二进制。
 
-## 冒烟测试
+## 测试
 
-验证三个功能的核心链路(会产生少量真实 API 调用):
+两个层次,都会产生少量真实 API 调用。
+
+**冒烟测试** —— 验 SDK 那一层,不走 UI:
 
 ```bash
-node scripts/smoke.mjs
+npm run smoke
 ```
 
-它不走 UI,直接按主进程的方式调用 SDK —— 风险都在这一层,渲染层只是把结果画出来。
-覆盖:流式聊天、会话中途 `setModel`、`listSessions` / `getSessionMessages`、
+覆盖流式聊天、会话中途 `setModel`、`listSessions` / `getSessionMessages`,
 以及 `resume` 后不分叉出新 session id。
+
+**端到端测试** —— 用 Playwright 驱动真实 Electron 窗口:
+
+```bash
+npm run e2e
+```
+
+覆盖 contextBridge 桥接、发消息后回复出现在界面、下拉切换模型后历史不丢、
+新会话进入侧边栏、点回旧会话载入其历史。使用独立的 `--user-data-dir`,
+不会读写你真实的 ClaudeDeck 配置。
 
 ## 打包安装程序
 

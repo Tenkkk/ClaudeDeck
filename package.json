@@ -12,6 +12,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "smoke": "node scripts/smoke.mjs",
+    "e2e": "electron-vite build && node scripts/e2e.mjs",
     "dist": "electron-vite build && electron-builder --win --publish never",
     "release": "electron-vite build && electron-builder --win --publish always"
   },
@@ -26,6 +28,7 @@
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "playwright": "^1.62.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "typescript": "^7.0.2",
