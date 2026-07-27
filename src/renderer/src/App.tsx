@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Sidebar from './components/Sidebar.js'
+import Loading from './screens/Loading.js'
+import Onboarding from './screens/Onboarding.js'
+import ProjectPicker from './screens/ProjectPicker.js'
+import { FAKE_HEADER } from './fake.js'
 import {
   EFFORT_LEVELS,
   PERMISSION_MODES,
@@ -12,7 +17,7 @@ import {
   type SessionListItem,
 } from '../../shared/ipc.js'
 
-type Phase = 'loading' | 'onboarding' | 'workspace' | 'chat'
+type Phase = 'loading' | 'onboarding' | 'projects' | 'workspace'
 
 interface PendingPermission {
   requestId: string
@@ -33,24 +38,29 @@ export default function App(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const transcriptRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
 
-  // ---- bootstrap ----------------------------------------------------------
-  const decidePhase = useCallback((report: DoctorReport, cfg: AppConfig) => {
-    if (!report.cliFound) return setPhase('onboarding')
-    if (!cfg.activeWorkspace) return setPhase('workspace')
-    setPhase('chat')
+  const refreshSessions = useCallback(async () => {
+    setSessions(await window.api.sessions.list())
   }, [])
 
-  useEffect(() => {
-    void (async () => {
-      const [report, cfg] = await Promise.all([window.api.doctor.check(), window.api.config.get()])
-      setDoctor(report)
-      setConfig(cfg)
-      decidePhase(report, cfg)
-    })()
+  const decidePhase = useCallback((report: DoctorReport, cfg: AppConfig) => {
+    if (!report.cliFound) return setPhase('onboarding')
+    if (!cfg.activeWorkspace) return setPhase('projects')
+    setPhase('workspace')
+  }, [])
+
+  const reload = useCallback(async () => {
+    const [report, cfg] = await Promise.all([window.api.doctor.check(), window.api.config.get()])
+    setDoctor(report)
+    setConfig(cfg)
+    decidePhase(report, cfg)
   }, [decidePhase])
 
-  // ---- streaming events ---------------------------------------------------
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
   useEffect(() => {
     return window.api.chat.onEvent((event: ChatEvent) => {
       if (event.type === 'session') {
@@ -71,28 +81,25 @@ export default function App(): React.JSX.Element {
         setBusy(false)
       }
     })
-  }, [])
+  }, [refreshSessions])
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight })
   }, [messages, streaming])
 
-  const refreshSessions = useCallback(async () => {
-    setSessions(await window.api.sessions.list())
-  }, [])
-
   useEffect(() => {
-    if (phase !== 'chat') return
+    if (phase !== 'workspace') return
     void refreshSessions()
     void window.api.chat.open().then(() => window.api.chat.models().then(setModels))
   }, [phase, refreshSessions])
 
-  // ---- actions ------------------------------------------------------------
-  async function pickWorkspace(): Promise<void> {
-    const cfg = await window.api.workspace.pick()
-    setConfig(cfg)
-    if (cfg.activeWorkspace) setPhase('chat')
-  }
+  // 输入框自动增高,到 --h-composer-max 封顶后内部滚动 · §07
+  useEffect(() => {
+    const el = composerRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`
+  }, [draft])
 
   async function openSession(sessionId: string): Promise<void> {
     setActiveSession(sessionId)
@@ -121,199 +128,126 @@ export default function App(): React.JSX.Element {
     await window.api.chat.send(text)
   }
 
-  async function changeModel(model: string): Promise<void> {
-    await window.api.chat.setModel(model)
-    setConfig((c) => (c ? { ...c, model } : c))
-  }
-
-  async function changeEffort(effort: EffortLevel): Promise<void> {
-    await window.api.chat.setEffort(effort)
-    setConfig((c) => (c ? { ...c, effort } : c))
-  }
-
-  async function changeMode(permissionMode: PermissionMode): Promise<void> {
-    await window.api.chat.setPermissionMode(permissionMode)
-    setConfig((c) => (c ? { ...c, permissionMode } : c))
-  }
-
-  async function answerPermission(allow: boolean): Promise<void> {
-    if (!permission) return
-    await window.api.chat.respondPermission(permission.requestId, allow)
-    setPermission(null)
-  }
-
-  // ---- screens ------------------------------------------------------------
-  if (phase === 'loading') {
-    return <div className="center">正在检查运行环境…</div>
-  }
+  if (phase === 'loading') return <Loading />
 
   if (phase === 'onboarding') {
+    return <Onboarding doctor={doctor} config={config} onDone={reload} />
+  }
+
+  if (phase === 'projects') {
     return (
-      <Onboarding
-        doctor={doctor}
+      <ProjectPicker
         config={config}
-        onDone={async () => {
-          const [report, cfg] = await Promise.all([window.api.doctor.check(), window.api.config.get()])
-          setDoctor(report)
+        onPick={async () => {
+          const cfg = await window.api.workspace.pick()
           setConfig(cfg)
-          decidePhase(report, cfg)
+          if (cfg.activeWorkspace) setPhase('workspace')
+        }}
+        onUse={async (dir) => {
+          setConfig(await window.api.workspace.use(dir))
+          setPhase('workspace')
         }}
       />
     )
   }
 
-  if (phase === 'workspace') {
-    return (
-      <div className="center">
-        <div className="card">
-          <h2>选择工作目录</h2>
-          <p style={{ color: 'var(--muted)', margin: 0 }}>
-            Claude Code 的会话按目录归属。选定目录后,这里会列出该目录下的全部历史会话。
-          </p>
-          <button className="primary" onClick={pickWorkspace}>
-            选择目录…
-          </button>
-          {config && config.workspaces.length > 0 && (
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>最近使用</div>
-              {config.workspaces.map((dir) => (
-                <button
-                  key={dir}
-                  className="session-item"
-                  onClick={async () => {
-                    setConfig(await window.api.workspace.use(dir))
-                    setPhase('chat')
-                  }}
-                >
-                  <span className="title">{dir}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const mode = config?.permissionMode ?? 'default'
+  const modeLabel = PERMISSION_MODES.find((m) => m.value === mode)
+  const modelLabel = models.find((m) => m.value === (config?.model ?? 'default'))
+  const contextWarn = FAKE_HEADER.contextPercent > 80
 
   return (
     <div className="shell">
-      <aside className="sidebar">
-        <header>
-          <button className="primary" style={{ width: '100%' }} onClick={newSession}>
-            + 新建会话
-          </button>
-        </header>
-        <div className="session-list">
-          {sessions.length === 0 && (
-            <p style={{ color: 'var(--muted)', padding: 10 }}>该目录下还没有会话。</p>
-          )}
-          {sessions.map((s) => (
-            <button
-              key={s.sessionId}
-              className="session-item"
-              aria-current={s.sessionId === activeSession}
-              onClick={() => void openSession(s.sessionId)}
-            >
-              <span className="title">{s.title}</span>
-              <span className="meta">{new Date(s.lastModified).toLocaleString('zh-CN')}</span>
-            </button>
-          ))}
-        </div>
-        <footer>
-          <div>工作目录</div>
-          {config?.activeWorkspace}
-          <button style={{ marginTop: 8, width: '100%' }} onClick={() => setPhase('workspace')}>
-            切换目录
-          </button>
-        </footer>
-      </aside>
+      <Sidebar
+        activeWorkspace={config?.activeWorkspace ?? null}
+        sessions={sessions}
+        activeSession={activeSession}
+        onNewSession={() => void newSession()}
+        onOpenSession={(id) => void openSession(id)}
+        onManageProjects={() => setPhase('projects')}
+      />
 
       <main className="main">
-        <div className="toolbar">
-          <label>
-            模型
-            {/* SDK 的列表里已经包含 "Default (recommended)",不要再自造一个默认项 */}
-            <select
-              value={config?.model ?? 'default'}
-              onChange={(e) => void changeModel(e.target.value)}
-              disabled={models.length === 0}
-            >
-              {models.length === 0 && <option value="default">加载中…</option>}
-              {models.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Effort
-            <span className="effort">
-              {EFFORT_LEVELS.map((level) => (
-                <button
-                  key={level}
-                  aria-pressed={config?.effort === level}
-                  onClick={() => void changeEffort(level)}
-                >
-                  {level}
-                </button>
-              ))}
-            </span>
-          </label>
-
-          <label>
-            权限
-            <select
-              value={config?.permissionMode ?? 'default'}
-              onChange={(e) => void changeMode(e.target.value as PermissionMode)}
-            >
-              {PERMISSION_MODES.map((m) => (
-                <option key={m.value} value={m.value} title={m.hint}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {busy && (
-            <button style={{ marginLeft: 'auto' }} onClick={() => void window.api.chat.interrupt()}>
-              停止
-            </button>
-          )}
+        {/* 归属行 · §05:项目 / 会话标题 / 上下文百分比 */}
+        <div className="crumb">
+          <span className="project">
+            {config?.activeWorkspace?.split(/[\\/]/).filter(Boolean).pop() ?? '—'}
+          </span>
+          <span className="sep">/</span>
+          <span className="title">
+            {sessions.find((s) => s.sessionId === activeSession)?.title ?? '新会话'}
+          </span>
+          {/* 上下文百分比要等第 3 步的 get_context_usage,骨架阶段用假值 */}
+          <span className={`context${contextWarn ? ' warn' : ''}`}>
+            上下文 {FAKE_HEADER.contextPercent}%
+          </span>
         </div>
 
         <div className="transcript" ref={transcriptRef}>
-          {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-              <span className="who">{m.role === 'user' ? '你' : 'Claude'}</span>
-              <div className="body">{m.text}</div>
-            </div>
-          ))}
-          {streaming && (
-            <div className="msg assistant">
-              <span className="who">Claude</span>
-              <div className="body">{streaming}</div>
+          {messages.length === 0 && !streaming && (
+            <div className="empty-state">
+              <span className="brand-dot breathing" />
+              <div>问点什么开始。Claude Code 会在当前项目目录里读写文件。</div>
             </div>
           )}
-          {permission && (
-            <div className="permission">
-              <strong>Claude 请求使用工具:{permission.toolName}</strong>
-              <div className="row">
-                <button className="primary" onClick={() => void answerPermission(true)}>
-                  允许
-                </button>
-                <button onClick={() => void answerPermission(false)}>拒绝</button>
+
+          {messages.map((m, i) => (
+            <div key={i} className={`msg-wrap${m.role === 'user' ? ' user' : ''}`}>
+              <div className={m.role === 'user' ? 'msg-user' : 'msg-claude'}>{m.text}</div>
+              {/* 常留 20px 空槽,悬停出动作行时内容不跳动 · §06 */}
+              <div className="msg-slot">
+                <span>复制</span>
+                <span>{m.role === 'user' ? '编辑并重发 ↳' : '从这里重答 ↳'}</span>
+              </div>
+            </div>
+          ))}
+
+          {streaming && (
+            <div className="msg-wrap">
+              {/* 正在输出的那条不出动作行 · §06 */}
+              <div className="msg-claude">
+                {streaming}
+                <span className="caret" />
               </div>
             </div>
           )}
-          {error && <div className="error">{error}</div>}
+
+          {permission && (
+            <div className="popover prose" style={{ padding: 'var(--s16)', width: '100%', maxWidth: 'var(--w-prose)' }}>
+              <strong>Claude 想使用工具:{permission.toolName}</strong>
+              <div className="hint" style={{ margin: '6px 0 12px' }}>
+                在你点下之前,对话停在这里。
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--s8)' }}>
+                <button
+                  className="primary"
+                  onClick={() => {
+                    void window.api.chat.respondPermission(permission.requestId, true)
+                    setPermission(null)
+                  }}
+                >
+                  允许
+                </button>
+                <button
+                  onClick={() => {
+                    void window.api.chat.respondPermission(permission.requestId, false)
+                    setPermission(null)
+                  }}
+                >
+                  拒绝
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && <div style={{ color: 'var(--warn)' }}>{error}</div>}
         </div>
 
         <div className="composer">
           <textarea
+            ref={composerRef}
             value={draft}
-            placeholder="给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行)"
+            placeholder="给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -322,95 +256,92 @@ export default function App(): React.JSX.Element {
               }
             }}
           />
-          <button className="primary" disabled={busy || !draft.trim()} onClick={() => void send()}>
-            发送
-          </button>
-        </div>
-      </main>
-    </div>
-  )
-}
 
-function Onboarding({
-  doctor,
-  config,
-  onDone,
-}: {
-  doctor: DoctorReport | null
-  config: AppConfig | null
-  onDone: () => void | Promise<void>
-}): React.JSX.Element {
-  const [installing, setInstalling] = useState(false)
-  const [log, setLog] = useState('')
-  const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? '')
-  const [apiKey, setApiKey] = useState('')
+          {/* 控件条 · §05:左权限,右模型、努力、发送。
+              三个弹层在第 5 步实现,骨架阶段先用原生 select 保住功能。 */}
+          <div className="controls">
+            <label className="chip" title={modeLabel?.hint}>
+              <select
+                data-control="permission"
+                value={mode}
+                onChange={(e) => {
+                  const v = e.target.value as PermissionMode
+                  void window.api.chat.setPermissionMode(v)
+                  setConfig((c) => (c ? { ...c, permissionMode: v } : c))
+                }}
+              >
+                {PERMISSION_MODES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-  return (
-    <div className="center">
-      <div className="card">
-        <h2>ClaudeDeck 首次配置</h2>
-
-        <section>
-          <strong>1. Claude Code 命令行</strong>
-          <p style={{ color: 'var(--muted)' }}>
-            {doctor?.cliFound
-              ? `已检测到:${doctor.cliVersion}`
-              : '未检测到 claude 命令。ClaudeDeck 通过官方 Agent SDK 驱动 Claude Code,必须先安装它。'}
-          </p>
-          {!doctor?.cliFound && (
-            <>
-              <code>npm install -g @anthropic-ai/claude-code</code>
-              <div className="row" style={{ marginTop: 8 }}>
-                <button
-                  className="primary"
-                  disabled={installing}
-                  onClick={async () => {
-                    setInstalling(true)
-                    const result = await window.api.doctor.install()
-                    setLog(result.output)
-                    setInstalling(false)
-                    await onDone()
+            <div className="right">
+              <label className="chip model-label" title={modelLabel?.displayName}>
+                <select
+                  data-control="model"
+                  value={config?.model ?? 'default'}
+                  disabled={models.length === 0}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    void window.api.chat.setModel(v)
+                    setConfig((c) => (c ? { ...c, model: v } : c))
                   }}
                 >
-                  {installing ? '安装中…' : '一键安装'}
+                  {models.length === 0 && <option value="default">加载中…</option>}
+                  {models.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="chip" title="努力程度:越往右想得越久、也越贵">
+                <select
+                  data-control="effort"
+                  value={config?.effort ?? 'medium'}
+                  onChange={(e) => {
+                    const v = e.target.value as EffortLevel
+                    void window.api.chat.setEffort(v)
+                    setConfig((c) => (c ? { ...c, effort: v } : c))
+                  }}
+                >
+                  {EFFORT_LEVELS.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {/* 输出中「发送」整颗变「停止」,不另设按钮 · §05。
+                  data-state 是这两态唯一可靠的区分点 —— 二者共用同一个位置,
+                  只看类名或文本都容易在自动化里点错。 */}
+              {busy ? (
+                <button
+                  className="send"
+                  data-state="stop"
+                  onClick={() => void window.api.chat.interrupt()}
+                >
+                  停止
                 </button>
-              </div>
-              {log && <pre style={{ maxHeight: 140, overflow: 'auto', fontSize: 12 }}>{log}</pre>}
-            </>
-          )}
-        </section>
-
-        <section>
-          <strong>2. 凭据(可选)</strong>
-          <p style={{ color: 'var(--muted)' }}>
-            留空则沿用你在终端里已登录的 Claude Code 账号。填写后将覆盖,API Key 由系统凭据加密保存。
-          </p>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <input
-              placeholder="ANTHROPIC_BASE_URL(如使用中转端点)"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-            <input
-              type="password"
-              placeholder="API Key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
+              ) : (
+                <button
+                  className="primary send"
+                  data-state="send"
+                  disabled={!draft.trim()}
+                  onClick={() => void send()}
+                >
+                  发送
+                </button>
+              )}
+            </div>
           </div>
-        </section>
-
-        <button
-          className="primary"
-          onClick={async () => {
-            await window.api.config.update({ baseUrl })
-            if (apiKey) await window.api.config.setApiKey(apiKey)
-            await onDone()
-          }}
-        >
-          保存并继续
-        </button>
-      </div>
+        </div>
+      </main>
     </div>
   )
 }

@@ -8,3 +8,5 @@ release/
 Thumbs.db
 .env
 .env.local
+
+.screenshots/

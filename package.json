@@ -15,7 +15,9 @@
     "smoke": "node scripts/smoke.mjs",
     "e2e": "electron-vite build && node scripts/e2e.mjs",
     "dist": "electron-vite build && electron-builder --win --publish never",
-    "release": "electron-vite build && electron-builder --win --publish always"
+    "release": "electron-vite build && electron-builder --win --publish always",
+    "unit": "node scripts/unit.mjs",
+    "measure": "electron-vite build && node scripts/measure.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.220"

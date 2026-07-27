@@ -1,0 +1,834 @@
+/*
+ * ClaudeDeck 骨架样式 —— IMPLEMENTATION-BRIEF §7 第 2 步。
+ *
+ * 只引用 styles.css 里的 token,不出现任何字面量色值(§8 验收标准)。
+ * 节次标注对应《设计终稿》。
+ */
+
+/* ============================================================
+ * 动效原语
+ * ========================================================== */
+
+/* §02:品牌圆点 2.4 秒一次的呼吸。转圈是「在等服务器」,呼吸是「还活着」 */
+@keyframes cd-breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* §07:流式中的 2px 竖光标 */
+@keyframes cd-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ============================================================
+ * 通用原子 · §07
+ * ========================================================== */
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--r-control);
+  padding: var(--s8) var(--s16);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+button:active:not(:disabled) {
+  background: var(--bubble);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+
+button.primary:active:not(:disabled) {
+  background: var(--accent-ink);
+}
+
+/* §08:删除是唯一用警示色做主按钮的地方 */
+button.danger {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--surface);
+}
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+button.ghost:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--s8) var(--s12);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted-2);
+}
+
+/* §07:聚焦 · 1px 陶土描边 */
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+code,
+kbd,
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: var(--text-ui-s);
+}
+
+/* §08 共用规格:弹层 —— --raised 底、1px 边、圆角 8(带正文的用 10)、唯一有阴影的东西 */
+.popover {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-popover);
+  box-shadow: var(--shadow-popover);
+  padding: var(--s6);
+}
+
+.popover.prose {
+  border-radius: var(--r-bubble);
+}
+
+/* §07:分段 5 格,等宽 */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  overflow: hidden;
+}
+
+.segmented button {
+  border: none;
+  border-radius: 0;
+  padding: var(--s6) var(--s12);
+  font-size: var(--text-ui-s);
+  background: var(--surface);
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+/* ============================================================
+ * 屏幕 A · 加载 · §02
+ * ========================================================== */
+
+.screen-center {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--s32);
+}
+
+.brand {
+  font-family: var(--font-brand);
+  font-size: var(--text-brand);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+/* 空态与加载态共用同一颗点,视觉上串起来 */
+.brand-dot {
+  width: var(--s8);
+  height: var(--s8);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  flex: none;
+}
+
+.brand-dot.breathing {
+  animation: cd-breathe 2.4s ease-in-out infinite;
+}
+
+.loading-note {
+  margin-top: var(--s16);
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ============================================================
+ * 屏幕 B / C · 单卡片 · §03 §04
+ * ========================================================== */
+
+.card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-bubble);
+  padding: var(--s32);
+  display: grid;
+  gap: var(--s20);
+}
+
+.card h1 {
+  margin: 0;
+  font-size: var(--text-ui-l);
+  font-weight: 600;
+}
+
+.card section {
+  display: grid;
+  gap: var(--s8);
+}
+
+.step-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+}
+
+.step-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.step-title {
+  font-weight: 600;
+}
+
+.badge {
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 1px var(--s8);
+}
+
+.badge.ok {
+  color: var(--live);
+  border-color: var(--live);
+}
+
+.badge.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.cmd-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  padding: var(--s8) var(--s12);
+}
+
+.cmd-row code {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* §03:日志区等宽、最高 140px、自动滚到底 */
+.log {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--ink-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  padding: var(--s8) var(--s12);
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+/* §03:Key 不会明文落盘 —— 这一屏的信任提示 */
+.trust {
+  display: flex;
+  gap: var(--s8);
+  align-items: flex-start;
+  background: var(--accent-tint);
+  border-radius: var(--r-inline);
+  padding: var(--s8) var(--s12);
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.trust .brand-dot {
+  margin-top: 5px;
+}
+
+/* §04:项目行 */
+.project-pick {
+  display: grid;
+  gap: var(--s4);
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  padding: var(--s8) var(--s12);
+}
+
+.project-pick:hover {
+  background: var(--bg);
+}
+
+.project-pick .name {
+  font-weight: 500;
+}
+
+.project-pick .path {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted);
+}
+
+.project-pick .count {
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+}
+
+/* ============================================================
+ * 屏幕 D · 主界面 · §05
+ * ========================================================== */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--w-sidebar) 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---- 侧栏 ---- */
+
+.sidebar {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-brand {
+  padding: var(--s16) var(--s16) var(--s12);
+}
+
+.sidebar-new {
+  padding: 0 var(--s12) var(--s12);
+}
+
+.sidebar-new button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s8);
+}
+
+.sidebar-new kbd {
+  color: var(--surface);
+  opacity: 0.7;
+  font-size: var(--text-mono-s);
+}
+
+.sidebar-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 var(--s8) var(--s12);
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s6) var(--s8);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.group-head .spacer {
+  flex: 1;
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  padding: var(--s6) var(--s8);
+  border-radius: var(--r-control);
+}
+
+.project-row:hover {
+  background: var(--bg);
+}
+
+/* 展开箭头用 CSS 画,不用 ▸ ▾ 字符 —— 打包的拉丁字体没有几何符号字形,
+   靠系统回落会出豆腐块。画出来的三角在任何字体环境下都一样。 */
+.project-row .caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin: 0 var(--s4) 0 var(--s4);
+  border-left: 5px solid var(--mark);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 120ms ease;
+  transform-origin: 30% 50%;
+}
+
+.project-row[aria-expanded='true'] .caret {
+  transform: rotate(90deg);
+}
+
+.project-row .name {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-row .count {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted-2);
+}
+
+/* .claude 节点挂在项目名和会话之间 · §10 */
+.claude-node {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  width: 100%;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  padding: var(--s6) var(--s8);
+  margin-left: var(--s16);
+  width: calc(100% - var(--s16));
+  border-radius: var(--r-control);
+  color: var(--ink-2);
+}
+
+.claude-node:hover {
+  background: var(--bg);
+}
+
+.claude-node .mono {
+  flex: 1;
+}
+
+/* §05:当前会话是 8px 圆角块 + 2px 陶土内条,其他会话不画容器 */
+.session-row {
+  display: grid;
+  gap: 2px;
+  width: calc(100% - var(--s16));
+  margin-left: var(--s16);
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--r-popover);
+  padding: var(--s8) var(--s12);
+}
+
+.session-row:hover {
+  background: var(--bg);
+}
+
+.session-row[aria-current='true'] {
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.session-row[aria-current='true'] .title {
+  font-weight: 600;
+}
+
+.session-row .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row .meta {
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.expand-all {
+  margin-left: var(--s16);
+  width: calc(100% - var(--s16));
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-ui-s);
+  padding: var(--s6) var(--s12);
+}
+
+.expand-all:hover {
+  background: var(--bg);
+}
+
+/* ---- 侧栏底部两行 · §05 ---- */
+
+.sidebar-foot {
+  border-top: 1px solid var(--border);
+  padding: var(--s12) var(--s16);
+  display: grid;
+  gap: var(--s6);
+}
+
+.quota {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s12);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.quota .label {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.quota .val {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--ink-2);
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s8);
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+  padding: var(--s4) 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+}
+
+.version-row:hover {
+  background: var(--bg);
+}
+
+/* ---- 主区 ---- */
+
+.main {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* §05 归属行:项目 / 会话标题 / 上下文百分比 */
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s12) var(--s20);
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+
+.crumb .project {
+  color: var(--muted);
+  flex: none;
+}
+
+.crumb .sep {
+  color: var(--mark);
+  flex: none;
+}
+
+.crumb .title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb .context {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted);
+}
+
+/* 过 80% 转警示色 —— 自动压缩唯一的预告 */
+.crumb .context.warn {
+  color: var(--warn);
+}
+
+/* ---- 对话区 ---- */
+
+.transcript {
+  overflow-y: auto;
+  min-height: 0;
+  padding: var(--s26) var(--s20);
+  display: grid;
+  gap: var(--s20);
+  align-content: start;
+  justify-items: start;
+}
+
+/* §06 用户 · 靠右 · 有气泡 · 最宽 560 */
+.msg-user {
+  justify-self: end;
+  max-width: var(--w-bubble);
+  background: var(--bubble);
+  border-radius: var(--r-bubble);
+  padding: var(--s12) var(--s16);
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+/* §06 Claude · 靠左 · 无气泡 · 最宽 720 · Source Serif 正文 */
+.msg-claude {
+  justify-self: start;
+  max-width: var(--w-prose);
+  font-family: var(--font-prose);
+  font-size: var(--text-prose);
+  line-height: var(--leading-prose);
+  white-space: pre-wrap;
+}
+
+/* §06:每条下面常留 20px 空槽,悬停出动作行时内容不跳动 */
+.msg-slot {
+  height: var(--s20);
+  display: flex;
+  align-items: center;
+  gap: var(--s12);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.msg-wrap:hover .msg-slot {
+  opacity: 1;
+}
+
+.msg-wrap {
+  display: grid;
+  gap: var(--s4);
+  width: 100%;
+}
+
+.msg-wrap.user {
+  justify-items: end;
+}
+
+/* 流式中的竖光标。正在输出的那条不出动作行 */
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  margin-left: 1px;
+  animation: cd-caret 1s step-end infinite;
+}
+
+/* 只有空态时整块居中;有消息时对话区仍从顶部排 */
+.transcript:has(.empty-state) {
+  align-content: center;
+  justify-items: center;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--muted);
+  display: grid;
+  gap: var(--s12);
+  justify-items: center;
+}
+
+/* ---- 输入区与控件条 · §05 ---- */
+
+.composer {
+  border-top: 1px solid var(--border);
+  background: var(--raised);
+  padding: var(--s12) var(--s20) var(--s16);
+  display: grid;
+  gap: var(--s8);
+}
+
+.composer textarea {
+  width: 100%;
+  resize: none;
+  min-height: var(--h-composer-min);
+  max-height: var(--h-composer-max);
+  overflow-y: auto;
+  line-height: 1.6;
+  background: var(--surface);
+}
+
+/* 左:权限。右:模型、努力、发送 */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.controls .right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s6);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--r-pill);
+  padding: var(--s6) var(--s12);
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.chip:hover {
+  background: var(--bg);
+}
+
+/* 完全放行需要一个警示性的视觉区别 · §D2 */
+.chip.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.chip .caret-down {
+  color: var(--mark);
+  font-size: 9px;
+}
+
+/* 骨架阶段:控件条里用原生 select 占位保住功能,第 5 步换成弹层。
+   把 select 的原生外观压平,让它看起来就是胶囊本身。 */
+.chip select {
+  font: inherit;
+  font-size: var(--text-ui-s);
+  color: inherit;
+  border: none;
+  background: transparent;
+  padding: 0 var(--s4) 0 0;
+  cursor: pointer;
+  max-width: 22ch;
+}
+
+.chip select:focus {
+  outline: none;
+}
+
+/* 子进程胶囊:没有后台任务时整颗消失,不留空位 · §11 */
+.chip.live {
+  color: var(--live);
+  border-color: var(--live);
+}
+
+.chip.live .dot {
+  width: var(--s6);
+  height: var(--s6);
+  border-radius: var(--r-pill);
+  background: var(--live);
+  animation: cd-breathe 2.4s ease-in-out infinite;
+}
+
+/* 输出中「发送」整颗变「停止」,不另设按钮 */
+.send {
+  min-width: 76px;
+  justify-content: center;
+}
+
+/* ============================================================
+ * 三档宽度 · §09
+ * ========================================================== */
+
+/* 940(最小):模型名截断到 14 字,努力只剩一个字 */
+@media (max-width: 1040px) {
+  .controls .model-label {
+    max-width: 14ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* 1600:侧栏不变宽,多出来的宽度全给对话区;正文仍封顶 720 并居左 */
+@media (min-width: 1600px) {
+  .transcript {
+    padding-left: var(--s32);
+    padding-right: var(--s32);
+  }
+}

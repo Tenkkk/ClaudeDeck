@@ -26,5 +26,10 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # 纯函数测试,不产生 API 调用,可以进 CI。
+      # smoke 与 e2e 会真调 API,留给本地手动跑。
+      - name: Unit tests
+        run: npm run unit
+
       - name: Build
         run: npm run build
