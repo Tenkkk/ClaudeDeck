@@ -109,7 +109,10 @@ export interface SessionListItem {
 
 export interface DiffHunk {
   oldStart: number
+  oldLines: number
   newStart: number
+  newLines: number
+  /** Raw patch lines, each still carrying its leading '+', '-' or ' '. */
   lines: string[]
 }
 
@@ -159,7 +162,8 @@ export type ChatEvent =
   | { type: 'tool'; row: ToolRow }
   /** The same row again once its result arrived — replace by `row.id`. */
   | { type: 'toolUpdate'; row: ToolRow }
-  | { type: 'permission'; requestId: string; toolName: string; input: unknown }
+  /** `target` 是这次调用最该被看见的那个参数(文件路径 / 命令),已在主进程取好。 */
+  | { type: 'permission'; requestId: string; toolName: string; target?: string }
   | { type: 'done' }
   | { type: 'error'; message: string }
 

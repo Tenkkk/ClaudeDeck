@@ -232,9 +232,12 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('chat:interrupt', () => active?.interrupt())
-  ipcMain.handle('chat:permission', (_e, requestId: string, allow: boolean) => {
-    active?.answerPermission(requestId, allow)
-  })
+  ipcMain.handle(
+    'chat:permission',
+    (_e, requestId: string, allow: boolean, remember: boolean, toolName?: string) => {
+      active?.answerPermission(requestId, allow, remember, toolName)
+    },
+  )
 
   // Model and permission mode change in place — history is untouched.
   ipcMain.handle('chat:setModel', async (_e, model: string) => {

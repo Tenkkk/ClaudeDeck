@@ -67,6 +67,19 @@ export interface StartOptions {
 let permissionSeq = 0
 
 /**
+ * 权限卡上要显示的那个参数。工具不同,最该被看见的东西也不同:
+ * 改文件看路径,跑命令看命令本身。取不到就不显示,不编。
+ */
+function permissionTarget(input: unknown): string | undefined {
+  const arg = (input ?? {}) as Record<string, unknown>
+  for (const key of ['file_path', 'command', 'path', 'url', 'pattern']) {
+    const v = arg[key]
+    if (typeof v === 'string' && v.trim()) return v
+  }
+  return undefined
+}
+
+/**
  * One live conversation. Wraps a single long-lived Query so that model and
  * permission-mode changes can be applied in place rather than by restarting.
  */
@@ -76,6 +89,8 @@ export class ChatSession {
   private pendingPermissions = new Map<string, (allow: boolean) => void>()
   /** tool_use_id → 已发出的行,结果回来时按 id 补全。 */
   private toolRows = new Map<string, ToolRow>()
+  /** 勾过「本次会话内不再问」的工具名。换会话即失效。 */
+  private alwaysAllow = new Set<string>()
 
   sessionId: string | null = null
 
@@ -98,10 +113,19 @@ export class ChatSession {
         includePartialMessages: true,
         env: { ...process.env, ...credentialEnv() } as Record<string, string>,
         canUseTool: async (toolName, input) => {
+          // 用户勾过「本次会话内不再问」的工具直接放行,不再打断
+          if (this.alwaysAllow.has(toolName)) {
+            return { behavior: 'allow' as const, updatedInput: input }
+          }
           const requestId = `perm-${++permissionSeq}`
           const allowed = await new Promise<boolean>((resolve) => {
             this.pendingPermissions.set(requestId, resolve)
-            this.emit({ type: 'permission', requestId, toolName, input })
+            this.emit({
+              type: 'permission',
+              requestId,
+              toolName,
+              target: permissionTarget(input),
+            })
           })
           return allowed
             ? { behavior: 'allow' as const, updatedInput: input }
@@ -184,10 +208,15 @@ export class ChatSession {
     })
   }
 
-  answerPermission(requestId: string, allow: boolean): void {
+  /**
+   * `remember` 对应卡片右下角的「本次会话内不再问 X」。只在允许时有意义,
+   * 且只作用于当前这个 ChatSession —— 换会话就重新问。
+   */
+  answerPermission(requestId: string, allow: boolean, remember = false, toolName?: string): void {
     const resolve = this.pendingPermissions.get(requestId)
     if (!resolve) return
     this.pendingPermissions.delete(requestId)
+    if (allow && remember && toolName) this.alwaysAllow.add(toolName)
     resolve(allow)
   }
 

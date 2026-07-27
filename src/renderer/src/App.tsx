@@ -27,6 +27,7 @@ type Phase = 'loading' | 'onboarding' | 'projects' | 'workspace'
 interface PendingPermission {
   requestId: string
   toolName: string
+  target?: string
 }
 
 /** 上下文过 80% 转警示色 —— 自动压缩唯一的预告 · §06 */
@@ -116,7 +117,11 @@ export default function App(): React.JSX.Element {
       } else if (event.type === 'toolUpdate') {
         setTranscript((t) => replaceTool(t, event.row))
       } else if (event.type === 'permission') {
-        setPermission({ requestId: event.requestId, toolName: event.toolName })
+        setPermission({
+          requestId: event.requestId,
+          toolName: event.toolName,
+          target: event.target,
+        })
       } else if (event.type === 'done') {
         setStreaming((s) => {
           if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
@@ -289,9 +294,15 @@ export default function App(): React.JSX.Element {
             </div>
           )}
 
+          {/* §06 权限卡:行内、不弹窗 —— 弹窗会把上文遮住,而你要看的正是上文。
+              陶土左条 = 在拦你(计划卡是沙绿左条 = 在等你满意)。 */}
           {permission && (
             <div className="permission-card">
-              <strong>Claude 想使用工具:{permission.toolName}</strong>
+              <div className="card-label">等待你决定</div>
+              <div className="card-title">
+                Claude 想使用 {permission.toolName}
+                {permission.target && <strong className="card-target">{permission.target}</strong>}
+              </div>
               <div className="hint">在你点下之前,对话停在这里。</div>
               <div className="row">
                 <button
@@ -310,6 +321,21 @@ export default function App(): React.JSX.Element {
                   }}
                 >
                   拒绝
+                </button>
+                <button
+                  className="card-remember"
+                  title="之后这个工具不再逐次询问,换会话即失效"
+                  onClick={() => {
+                    void window.api.chat.respondPermission(
+                      permission.requestId,
+                      true,
+                      true,
+                      permission.toolName,
+                    )
+                    setPermission(null)
+                  }}
+                >
+                  本次会话内不再问 {permission.toolName}
                 </button>
               </div>
             </div>

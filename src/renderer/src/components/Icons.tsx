@@ -67,6 +67,26 @@ export function PlusIcon({ size = 12, className }: Props): React.JSX.Element {
   )
 }
 
+/** 勾选框里的勾。 */
+export function CheckIcon({ size = 10, className }: Props): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 6.2 4.7 9 10 3" />
+    </svg>
+  )
+}
+
 /**
  * 折叠箭头。展开时由 CSS 旋转 90°。
  *

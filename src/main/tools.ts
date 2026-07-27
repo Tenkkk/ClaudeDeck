@@ -85,9 +85,12 @@ export function applyToolResult(row: ToolRow, result: unknown): ToolRow {
         if (line.startsWith('+')) added++
         else if (line.startsWith('-')) removed++
       }
+      const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
       hunks.push({
-        oldStart: typeof hunk.oldStart === 'number' ? hunk.oldStart : 0,
-        newStart: typeof hunk.newStart === 'number' ? hunk.newStart : 0,
+        oldStart: num(hunk.oldStart),
+        oldLines: num(hunk.oldLines),
+        newStart: num(hunk.newStart),
+        newLines: num(hunk.newLines),
         lines,
       })
     }

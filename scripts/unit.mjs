@@ -124,6 +124,9 @@ console.log('\ntools —— 工具行归一化 §06')
   eq('Edit 数出新增行', edit.added, 2)
   eq('Edit 数出删除行', edit.removed, 1)
   eq('Edit 保留 hunk 起始行', edit.hunks[0]?.oldStart, 168)
+  // diff 头要写成 @@ 168,6 → 168,9 @@,所以行数也得留着
+  eq('Edit 保留 oldLines', edit.hunks[0]?.oldLines, 6)
+  eq('Edit 保留 newLines', edit.hunks[0]?.newLines, 9)
   eq('Edit 保留全部行', edit.hunks[0]?.lines.length, 5)
 
   // TodoWrite:只看输入,不需要结果 —— 探针里 Claude 没调它,靠这里覆盖

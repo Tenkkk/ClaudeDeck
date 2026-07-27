@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CheckIcon } from './Icons.js'
 import type { ToolRow as Row } from '../../../shared/ipc.js'
 
 /** §06:超过 20 行的 patch 只显示前 8 行 + 「还有 N 行」 */
@@ -81,22 +82,21 @@ function EditRow({ row }: { row: Extract<Row, { tool: 'edit' }> }): React.JSX.El
         <div className="diff">
           {row.hunks[0] && (
             <div className="diff-hunk-head">
-              @@ {row.hunks[0].oldStart} → {row.hunks[0].newStart} @@
+              @@ {row.hunks[0].oldStart},{row.hunks[0].oldLines} → {row.hunks[0].newStart},
+              {row.hunks[0].newLines} @@
             </div>
           )}
-          {shown.map((line, i) => (
-            <div
-              key={i}
-              className={
-                line.startsWith('+') ? 'diff-line add' : line.startsWith('-') ? 'diff-line del' : 'diff-line'
-              }
-            >
-              {line}
-            </div>
-          ))}
-          {truncated && (
-            <div className="diff-more">还有 {lines.length - DIFF_HEAD_LINES} 行</div>
-          )}
+          {shown.map((line, i) => {
+            const sign = line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : ''
+            return (
+              <div key={i} className={`diff-line${sign ? ` ${sign}` : ''}`}>
+                {/* 加删记号放在左侧独立槽位,不混进正文 —— 否则复制出去会带上它们 */}
+                <span className="diff-sign">{sign ? line[0] : ''}</span>
+                <span className="diff-text">{line.slice(1)}</span>
+              </div>
+            )
+          })}
+          {truncated && <div className="diff-more">还有 {lines.length - DIFF_HEAD_LINES} 行</div>}
         </div>
       )}
     </div>
@@ -117,10 +117,13 @@ function TodoCard({ row }: { row: Extract<Row, { tool: 'todo' }> }): React.JSX.E
       </div>
       {row.todos.map((t, i) => (
         <div key={i} className={`todo-item ${t.status}`}>
-          <span className="todo-mark">
-            {t.status === 'completed' ? '✓' : t.status === 'in_progress' ? <span className="todo-dot" /> : ''}
+          {/* 真勾选框:完成是实心带勾,其余是空框 —— 未选中时也必须看得见(§01 的 3:1 下限) */}
+          <span className="todo-box" aria-hidden="true">
+            {t.status === 'completed' && <CheckIcon size={9} />}
           </span>
           <span className="todo-text">{t.content}</span>
+          {/* 正在做的那条带呼吸点,跟在文字后面 */}
+          {t.status === 'in_progress' && <span className="todo-dot" />}
         </div>
       ))}
     </div>
