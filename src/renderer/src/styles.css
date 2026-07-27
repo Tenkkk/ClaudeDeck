@@ -1,254 +1,107 @@
 /*
- * Placeholder styling only.
+ * ClaudeDeck 设计 token
  *
- * The real visual layer comes from the Organic design system via Claude Design.
- * Everything here is deliberately neutral so that swapping in the design tokens
- * is a replacement, not an argument with existing styles.
+ * 取自《ClaudeDeck 设计终稿》第 01 节的 token 表,逐条抄录,未做目测取色。
+ * 后续所有 CSS 只引用这里的变量,不写字面量色值(IMPLEMENTATION-BRIEF §8)。
+ *
+ * 视觉语言:纸白底、发丝线、6px 圆角、零阴影(仅弹层有)。
+ * 陶土 --accent 只出现在三处:当前项、主按钮、等你决定的卡片。
+ *
+ * 对比度硬性下限:≤14px 文字 ≥4.5:1;非文字标记(圆点、勾选框、分隔线)≥3:1。
+ * --ink / --ink-2 / --muted / --muted-2 / --mark 五档按此反推,不要往浅调。
+ *
+ * 第 01 节的表里没有列、但正文明确写了数值的四项,补在下面并注明出处:
+ * --border(§08 共用规格)、--diff-add / --diff-del(§06 Edit 工具行)、
+ * --shadow-popover(§08 共用规格)、--r-popover(§08)。
  */
 
 :root {
-  --bg: #fbfbfa;
-  --surface: #ffffff;
-  --border: #e6e4e0;
-  --text: #1f1e1c;
-  --muted: #78746d;
-  --accent: #c96442;
-  font-family: system-ui, 'Segoe UI', sans-serif;
-  font-size: 14px;
-  color: var(--text);
+  /* ---- 颜色 · §01 ---- */
+  --bg: #faf7f2;            /* 主区、对话区底 */
+  --surface: #ffffff;       /* 输入框、卡片 */
+  --raised: #fdfbf8;        /* 中栏、控件条、弹层 */
+  --bubble: #ece5da;        /* 用户气泡 */
+  --bubble-hover: #dcd3c4;  /* 气泡悬停 */
+  --accent-tint: #f4ede5;   /* 当前项、选中格 */
+  --accent: #a75f38;        /* 主按钮、当前左条 */
+  --accent-ink: #8f4a2b;    /* 陶土底上的字 */
+  --focus: #dfb99f;         /* 当前题描边 */
+  --warn: #9c3b26;          /* 完全放行、错误、删除 */
+  --warn-tint: #f7ebe6;     /* 警示底 */
+  --live: #6d7d51;          /* 子进程、分支名、计划卡左条 */
+
+  /* ---- 文字 · §01 ---- */
+  --ink: #232019;           /* 正文与标题 */
+  --ink-2: #4c463b;         /* 说明文字 */
+  --muted: #6f6759;         /* 元数据、标签 */
+  --muted-2: #756c5e;       /* 最弱一档、占位符 */
+  --mark: #82796a;          /* 未选中的圈、勾选框 */
+
+  /* ---- 描边与阴影 · §08 共用规格 ---- */
+  --border: #e0dbd1;        /* 发丝线。零阴影,分层靠它 */
+  --shadow-popover: 0 12px 32px rgba(35, 32, 25, 0.16);  /* 只有弹层有 */
+
+  /* ---- diff 两色 · §06 ----
+   * 取自本套调色板,不用 GitHub 那种饱和绿红——在纸白底上会抢正文 */
+  --diff-add: #eef1e6;
+  --diff-del: #f7ebe6;
+
+  /* ---- 字体 · §01 ----
+   * 四套拉丁字体已打包进仓库(SIL OFL 1.1,见 fonts/LICENSES.md),
+   * 由 fonts.css 声明。它们本就不含汉字,所以中文由栈里后面的
+   * Noto Sans SC(装了才用)或系统的微软雅黑承担。 */
+  --font-brand: Caprasimo, Georgia, serif;
+  --font-ui: Figtree, 'Noto Sans SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+  --font-prose: 'Source Serif 4', 'Noto Serif SC', 'Microsoft YaHei', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', Consolas, 'Microsoft YaHei', monospace;
+
+  /* ---- 字号 · §01 ---- */
+  --text-brand: 17px;       /* 品牌位,只用于 ClaudeDeck 这个词 */
+  --text-ui-s: 12px;
+  --text-ui-m: 13.5px;
+  --text-ui-l: 14.5px;
+  --text-prose: 16.5px;     /* Claude 的正文 */
+  --leading-prose: 1.8;
+  --text-mono-s: 10.5px;
+  --text-mono-m: 11.5px;
+  --text-mono-l: 12.5px;
+
+  /* ---- 圆角 · §01 + §08 ---- */
+  --r-inline: 5px;          /* 行内元素 */
+  --r-control: 6px;         /* 控件、卡片 */
+  --r-popover: 8px;         /* 弹层、当前会话块(带正文的弹层用 --r-bubble) */
+  --r-bubble: 10px;         /* 气泡、带正文的弹层 */
+  --r-pill: 999px;          /* 胶囊 */
+
+  /* ---- 间距 · §01 ---- */
+  --s4: 4px;
+  --s6: 6px;
+  --s8: 8px;
+  --s12: 12px;
+  --s16: 16px;
+  --s20: 20px;
+  --s26: 26px;
+  --s32: 32px;
+
+  /* ---- 尺寸 · §01 + §09 ---- */
+  --w-sidebar: 264px;       /* 侧栏,三档宽度下都不变 */
+  --w-midcol: 320px;        /* .claude 中栏 */
+  --w-prose: 720px;         /* Claude 正文最大宽 */
+  --w-bubble: 560px;        /* 用户气泡最大宽 */
+  --h-composer-min: 46px;   /* 输入框起始高 */
+  --h-composer-max: 180px;  /* 输入框封顶高,超出内部滚动 */
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
   background: var(--bg);
-}
-
-button {
-  font: inherit;
-  cursor: pointer;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 8px;
-  padding: 6px 12px;
-}
-
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-input,
-select,
-textarea {
-  font: inherit;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: var(--surface);
-  color: inherit;
-}
-
-.center {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  padding: 32px;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
-  max-width: 560px;
-  width: 100%;
-  display: grid;
-  gap: 14px;
-}
-
-.shell {
-  display: grid;
-  grid-template-columns: 264px 1fr;
-  height: 100vh;
-}
-
-.sidebar {
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.sidebar header,
-.sidebar footer {
-  padding: 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.sidebar footer {
-  border-bottom: none;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--muted);
-  word-break: break-all;
-}
-
-.session-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-  display: grid;
-  gap: 4px;
-  align-content: start;
-}
-
-.session-item {
-  text-align: left;
-  width: 100%;
-  border: 1px solid transparent;
-  background: transparent;
-  padding: 9px 10px;
-  display: grid;
-  gap: 3px;
-}
-
-.session-item:hover {
-  background: var(--bg);
-}
-
-.session-item[aria-current='true'] {
-  background: var(--bg);
-  border-color: var(--border);
-}
-
-.session-item .title {
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-item .meta {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.main {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: 0;
-}
-
-.toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  flex-wrap: wrap;
-}
-
-.toolbar label {
-  font-size: 12px;
-  color: var(--muted);
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.effort {
-  display: flex;
-  gap: 2px;
-}
-
-.effort button {
-  border-radius: 0;
-  padding: 5px 9px;
-  font-size: 12px;
-}
-
-.effort button:first-child {
-  border-radius: 8px 0 0 8px;
-}
-
-.effort button:last-child {
-  border-radius: 0 8px 8px 0;
-}
-
-.effort button[aria-pressed='true'] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.transcript {
-  overflow-y: auto;
-  padding: 22px;
-  display: grid;
-  gap: 16px;
-  align-content: start;
-}
-
-.msg {
-  display: grid;
-  gap: 5px;
-  max-width: 780px;
-}
-
-.msg .who {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.msg .body {
-  white-space: pre-wrap;
-  line-height: 1.65;
-}
-
-.msg.user .body {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 13px;
-}
-
-.composer {
-  display: flex;
-  gap: 10px;
-  padding: 14px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.composer textarea {
-  flex: 1;
-  resize: none;
-  min-height: 46px;
-  max-height: 180px;
-}
-
-.permission {
-  border: 1px solid var(--accent);
-  border-radius: 12px;
-  padding: 14px;
-  display: grid;
-  gap: 10px;
-  background: var(--surface);
-}
-
-.row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.error {
-  color: #b4432a;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-m);
 }

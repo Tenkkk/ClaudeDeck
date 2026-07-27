@@ -16,5 +16,11 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react()],
+    build: {
+      // 关掉资源内联。Vite 默认把 <4KB 的资源转成 data: URI,而渲染层的 CSP 是
+      // default-src 'self',不含 data:,内联的字体会被直接拦掉。宁可多一个文件请求,
+      // 也不为此放宽 CSP。
+      assetsInlineLimit: 0,
+    },
   },
 })
