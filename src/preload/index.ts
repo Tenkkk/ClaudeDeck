@@ -5,10 +5,10 @@ import type {
   ContextUsage,
   DoctorReport,
   EffortLevel,
-  HistoryMessage,
   ModelOption,
   PermissionMode,
   SessionListItem,
+  TranscriptItem,
   UsageInfo,
   Versions,
 } from '../shared/ipc.js'
@@ -39,7 +39,7 @@ const api = {
     /** Keyed by project path — sessions are scoped by directory. */
     byProject: (): Promise<Record<string, SessionListItem[]>> =>
       ipcRenderer.invoke('sessions:byProject'),
-    history: (sessionId: string): Promise<HistoryMessage[]> =>
+    history: (sessionId: string): Promise<TranscriptItem[]> =>
       ipcRenderer.invoke('sessions:history', sessionId),
     rename: (sessionId: string, title: string): Promise<void> =>
       ipcRenderer.invoke('sessions:rename', sessionId, title),

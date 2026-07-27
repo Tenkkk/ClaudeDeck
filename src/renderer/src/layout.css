@@ -711,6 +711,202 @@ kbd,
   justify-items: end;
 }
 
+.msg-action {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.msg-action:hover {
+  background: transparent;
+  color: var(--ink-2);
+}
+
+/* ---- 工具行 · §06 ----
+ * 默认只有一行标题,视觉权重低于正文。有输出的给展开/收起。 */
+
+.tool-block,
+.tool-row {
+  justify-self: start;
+  max-width: var(--w-prose);
+  width: 100%;
+}
+
+.tool-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s6);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-l);
+  color: var(--muted);
+}
+
+.tool-name {
+  color: var(--ink-2);
+}
+
+.tool-sep {
+  color: var(--mark);
+}
+
+.tool-arg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-toggle {
+  margin-left: auto;
+  flex: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.tool-toggle:hover {
+  background: transparent;
+  color: var(--ink-2);
+}
+
+/* stderr 与 interrupted 走警示色的左短线,但不做成红框
+   —— 它是过程,不是失败 */
+.tool-block.warn {
+  border-left: 2px solid var(--warn);
+  padding-left: var(--s8);
+}
+
+.tool-output {
+  margin: var(--s6) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--ink-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  padding: var(--s8) var(--s12);
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* ---- Edit 的 diff · §06 ----
+ * 加删两色取自本套调色板,不用 GitHub 那种饱和绿红 —— 在纸白底上会抢正文 */
+
+.diff-add-count {
+  color: var(--live);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+}
+
+.diff-del-count {
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+}
+
+.diff {
+  margin-top: var(--s6);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  line-height: 1.65;
+}
+
+.diff-hunk-head {
+  padding: var(--s4) var(--s12);
+  color: var(--muted-2);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-line {
+  padding: 0 var(--s12);
+  white-space: pre-wrap;
+  color: var(--ink-2);
+}
+
+.diff-line.add {
+  background: var(--diff-add);
+}
+
+.diff-line.del {
+  background: var(--diff-del);
+}
+
+.diff-more {
+  padding: var(--s4) var(--s12);
+  color: var(--muted);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-s);
+}
+
+/* ---- TodoWrite · §06 ---- */
+
+.todo-card {
+  justify-self: start;
+  max-width: var(--w-prose);
+  width: 100%;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-popover);
+  padding: var(--s12) var(--s16);
+  display: grid;
+  gap: var(--s6);
+}
+
+.todo-head {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: var(--s4);
+}
+
+.todo-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+  color: var(--ink-2);
+}
+
+.todo-item.completed .todo-text {
+  color: var(--muted-2);
+}
+
+.todo-item.in_progress .todo-text {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.todo-mark {
+  flex: none;
+  width: 12px;
+  color: var(--live);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 正在做的那条带呼吸点 */
+.todo-dot {
+  width: var(--s6);
+  height: var(--s6);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  animation: cd-breathe 2.4s ease-in-out infinite;
+}
+
 /* 流式中的竖光标。正在输出的那条不出动作行 */
 .caret {
   display: inline-block;

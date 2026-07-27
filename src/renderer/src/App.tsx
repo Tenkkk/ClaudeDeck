@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Message from './components/Message.js'
 import Sidebar from './components/Sidebar.js'
+import ToolRow from './components/ToolRow.js'
 import Loading from './screens/Loading.js'
 import Onboarding from './screens/Onboarding.js'
 import ProjectPicker from './screens/ProjectPicker.js'
@@ -11,10 +13,11 @@ import {
   type ContextUsage,
   type DoctorReport,
   type EffortLevel,
-  type HistoryMessage,
   type ModelOption,
   type PermissionMode,
   type SessionListItem,
+  type ToolRow as ToolRowData,
+  type TranscriptItem,
   type UsageInfo,
   type Versions,
 } from '../../shared/ipc.js'
@@ -29,6 +32,23 @@ interface PendingPermission {
 /** 上下文过 80% 转警示色 —— 自动压缩唯一的预告 · §06 */
 const CONTEXT_WARN_AT = 80
 
+/**
+ * §06:Claude 会反复写 TodoWrite,同一次会话里只保留一张卡、原地更新,
+ * 否则十几张待办卡会把对话冲掉。去重放在组装这一层。
+ */
+function appendTool(items: TranscriptItem[], row: ToolRowData): TranscriptItem[] {
+  const base =
+    row.tool === 'todo'
+      ? items.filter((i) => !(i.kind === 'tool' && i.row.tool === 'todo'))
+      : items
+  return [...base, { kind: 'tool', row }]
+}
+
+/** 结果回来时按 id 就地替换那一行,保持顺序。 */
+function replaceTool(items: TranscriptItem[], row: ToolRowData): TranscriptItem[] {
+  return items.map((i) => (i.kind === 'tool' && i.row.id === row.id ? { kind: 'tool', row } : i))
+}
+
 export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading')
   const [doctor, setDoctor] = useState<DoctorReport | null>(null)
@@ -36,7 +56,7 @@ export default function App(): React.JSX.Element {
   const [sessionsByProject, setSessionsByProject] = useState<Record<string, SessionListItem[]>>({})
   const [expandedAll, setExpandedAll] = useState<Record<string, boolean>>({})
   const [activeSession, setActiveSession] = useState<string | null>(null)
-  const [messages, setMessages] = useState<HistoryMessage[]>([])
+  const [transcript, setTranscript] = useState<TranscriptItem[]>([])
   const [streaming, setStreaming] = useState('')
   const [busy, setBusy] = useState(false)
   const [models, setModels] = useState<ModelOption[]>([])
@@ -84,11 +104,20 @@ export default function App(): React.JSX.Element {
         setActiveSession(event.sessionId)
       } else if (event.type === 'delta') {
         setStreaming((s) => s + event.text)
+      } else if (event.type === 'tool') {
+        // 工具行插在正文之间,所以先把已经流出来的文字定下来
+        setStreaming((s) => {
+          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s }])
+          return ''
+        })
+        setTranscript((t) => appendTool(t, event.row))
+      } else if (event.type === 'toolUpdate') {
+        setTranscript((t) => replaceTool(t, event.row))
       } else if (event.type === 'permission') {
         setPermission({ requestId: event.requestId, toolName: event.toolName })
       } else if (event.type === 'done') {
         setStreaming((s) => {
-          if (s) setMessages((m) => [...m, { role: 'assistant', text: s }])
+          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s }])
           return ''
         })
         setBusy(false)
@@ -103,7 +132,7 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight })
-  }, [messages, streaming])
+  }, [transcript, streaming])
 
   useEffect(() => {
     if (phase !== 'workspace') return
@@ -130,7 +159,7 @@ export default function App(): React.JSX.Element {
       setConfig(await window.api.projects.activate(projectPath))
     }
     setActiveSession(sessionId)
-    setMessages(await window.api.sessions.history(sessionId))
+    setTranscript(await window.api.sessions.history(sessionId))
     await window.api.chat.open(sessionId)
     setModels(await window.api.chat.models())
     await refreshMeters()
@@ -138,7 +167,7 @@ export default function App(): React.JSX.Element {
 
   async function newSession(): Promise<void> {
     setActiveSession(null)
-    setMessages([])
+    setTranscript([])
     setStreaming('')
     setError(null)
     await window.api.chat.open()
@@ -149,7 +178,7 @@ export default function App(): React.JSX.Element {
     const text = draft.trim()
     if (!text || busy) return
     setDraft('')
-    setMessages((m) => [...m, { role: 'user', text }])
+    setTranscript((t) => [...t, { kind: 'user', text }])
     setBusy(true)
     setError(null)
     await window.api.chat.send(text)
@@ -228,23 +257,20 @@ export default function App(): React.JSX.Element {
         </div>
 
         <div className="transcript" ref={transcriptRef}>
-          {messages.length === 0 && !streaming && (
+          {transcript.length === 0 && !streaming && (
             <div className="empty-state">
               <span className="brand-dot breathing" />
               <div>问点什么开始。Claude Code 会在当前项目目录里读写文件。</div>
             </div>
           )}
 
-          {messages.map((m, i) => (
-            <div key={i} className={`msg-wrap${m.role === 'user' ? ' user' : ''}`}>
-              <div className={m.role === 'user' ? 'msg-user' : 'msg-claude'}>{m.text}</div>
-              {/* 常留 20px 空槽,悬停出动作行时内容不跳动 · §06 */}
-              <div className="msg-slot">
-                <span>复制</span>
-                <span>{m.role === 'user' ? '编辑并重发 ↳' : '从这里重答 ↳'}</span>
-              </div>
-            </div>
-          ))}
+          {transcript.map((item, i) =>
+            item.kind === 'tool' ? (
+              <ToolRow key={`${item.row.id}-${i}`} row={item.row} />
+            ) : (
+              <Message key={i} role={item.kind} text={item.text} />
+            ),
+          )}
 
           {streaming && (
             <div className="msg-wrap">

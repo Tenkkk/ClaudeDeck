@@ -18,12 +18,14 @@ import {
   updateConfig,
 } from './config.js'
 import { installCli, runDoctor } from './doctor.js'
+import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   ChatEvent,
   EffortLevel,
-  HistoryMessage,
   PermissionMode,
   SessionListItem,
+  ToolRow,
+  TranscriptItem,
   Versions,
 } from '../shared/ipc.js'
 
@@ -137,25 +139,65 @@ function registerIpc(): void {
     return out
   })
 
-  ipcMain.handle('sessions:history', async (_e, sessionId: string): Promise<HistoryMessage[]> => {
+  /**
+   * Rebuilds a past conversation as the same TranscriptItem[] the live stream
+   * produces, so an old session renders identically to one being typed into —
+   * tool rows included, not just text.
+   */
+  ipcMain.handle('sessions:history', async (_e, sessionId: string): Promise<TranscriptItem[]> => {
     const config = getConfig()
-    const messages = await getSessionMessages(sessionId, { dir: config.activeWorkspace ?? undefined })
-    const out: HistoryMessage[] = []
-    for (const m of messages as { type?: string; message?: { role?: string; content?: unknown } }[]) {
-      const role = m.message?.role
-      if (role !== 'user' && role !== 'assistant') continue
-      const content = m.message?.content
-      const text =
-        typeof content === 'string'
-          ? content
-          : Array.isArray(content)
-            ? content
-                .filter((b): b is { type: 'text'; text: string } => (b as { type?: string }).type === 'text')
-                .map((b) => b.text)
-                .join('')
-            : ''
-      if (text.trim()) out.push({ role, text })
+    const messages = await getSessionMessages(sessionId, {
+      dir: config.activeWorkspace ?? undefined,
+    })
+
+    const out: TranscriptItem[] = []
+    const rowsById = new Map<string, ToolRow>()
+
+    interface Block {
+      type?: string
+      text?: string
+      id?: string
+      name?: string
+      input?: unknown
+      tool_use_id?: string
     }
+    interface Msg {
+      message?: { role?: string; content?: unknown }
+      tool_use_result?: unknown
+    }
+
+    for (const raw of messages as Msg[]) {
+      const role = raw.message?.role
+      const content = raw.message?.content
+      if (role !== 'user' && role !== 'assistant') continue
+
+      if (typeof content === 'string') {
+        if (content.trim()) out.push({ kind: role, text: content })
+        continue
+      }
+      if (!Array.isArray(content)) continue
+
+      let text = ''
+      for (const b of content as Block[]) {
+        if (b.type === 'text' && b.text) {
+          text += b.text
+        } else if (b.type === 'tool_use' && b.id && b.name) {
+          const row = rowFromToolUse(b.id, b.name, b.input)
+          rowsById.set(b.id, row)
+          out.push({ kind: 'tool', row })
+        } else if (b.type === 'tool_result' && b.tool_use_id) {
+          const pending = rowsById.get(b.tool_use_id)
+          if (!pending) continue
+          const filled = applyToolResult(pending, raw.tool_use_result)
+          rowsById.set(b.tool_use_id, filled)
+          // 就地替换 transcript 里那一条,保持顺序
+          const at = out.findIndex((i) => i.kind === 'tool' && i.row.id === b.tool_use_id)
+          if (at >= 0) out[at] = { kind: 'tool', row: filled }
+        }
+      }
+      if (text.trim()) out.push({ kind: role, text })
+    }
+
     return out
   })
 

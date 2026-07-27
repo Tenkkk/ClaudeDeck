@@ -54,7 +54,21 @@ npm run dev
 
 ## 测试
 
-两个层次,都会产生少量真实 API 调用。
+四层。前两层不产生 API 调用,后两层会。
+
+**单元测试** —— 纯函数,不花钱,已进 CI:
+
+```bash
+npm run unit
+```
+
+覆盖路径截断规则、相对时间、以及四种工具行的归一化(含畸形输入的降级)。
+
+**版式验收** —— 按设计终稿 §08 逐条量尺寸与三档宽度:
+
+```bash
+npm run measure
+```
 
 **冒烟测试** —— 验 SDK 那一层,不走 UI:
 
@@ -71,9 +85,9 @@ npm run smoke
 npm run e2e
 ```
 
-覆盖 contextBridge 桥接、发消息后回复出现在界面、下拉切换模型后历史不丢、
-新会话进入侧边栏、点回旧会话载入其历史。使用独立的 `--user-data-dir`,
-不会读写你真实的 ClaudeDeck 配置。
+覆盖 contextBridge 桥接、旧版配置迁移、发消息后回复出现在界面、下拉切换模型后
+历史不丢、新会话进入侧边栏、点回旧会话载入其历史、Bash 工具行与其输出展开。
+使用独立的 `--user-data-dir`,不会读写你真实的 ClaudeDeck 配置。
 
 ## 打包安装程序
 
@@ -124,21 +138,32 @@ git tag v0.1.0 && git push origin v0.1.0
 
 ```
 src/
-  main/       主进程:窗口、IPC、SDK 会话、凭据、环境检测
-    index.ts    入口与全部 IPC 处理
-    chat.ts     ChatSession —— 流式输入模式下的一次对话
-    config.ts   偏好与 safeStorage 凭据
-    doctor.ts   Claude Code CLI 检测与安装
-  preload/    contextBridge 白名单 API
-  renderer/   React 界面
-  shared/     主进程与渲染层共用的类型
+  main/                 主进程:窗口、IPC、SDK 会话、凭据、环境检测
+    index.ts              入口与全部 IPC 处理
+    chat.ts               ChatSession —— 流式输入模式下的一次对话
+    config.ts             偏好与 safeStorage 凭据(含旧结构迁移)
+    doctor.ts             Claude Code CLI 检测与安装
+    tools.ts              把 SDK 的工具调用归一化成界面能画的行
+  preload/              contextBridge 白名单 API
+  renderer/src/
+    App.tsx               四屏路由与主界面
+    screens/              加载 / 首次配置 / 选择项目
+    components/           侧栏、消息、工具行
+    lib/                  路径截断、相对时间等纯函数
+    styles.css            设计 token(第 01 节)
+    layout.css            骨架样式,只引用 token
+    fonts.css + fonts/    本地打包的字体与许可证
+  shared/               主进程与渲染层共用的类型
+scripts/                unit / measure / smoke / e2e
 docs/
-  DESIGN-SPEC.md   界面规格(Claude Design 的输入)
+  DESIGN-SPEC.md          界面规格(给 Claude Design 的输入)
+  IMPLEMENTATION-BRIEF.md 实施说明(设计终稿的工程对照)
 ```
 
 ## 文档
 
-- [界面规格](docs/DESIGN-SPEC.md)
+- [界面规格](docs/DESIGN-SPEC.md) —— 给设计的输入
+- [实施说明](docs/IMPLEMENTATION-BRIEF.md) —— 设计终稿的工程对照、接口清单与五个坑
 
 ## License
 

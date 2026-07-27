@@ -75,7 +75,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/3] 进程桥接')
+  console.log('[0/4] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -91,7 +91,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/3] 聊天')
+  console.log('\n[1/4] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -108,7 +108,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/3] 切换模型')
+  console.log('\n[2/4] 切换模型')
   const options = await page.$$eval('select[data-control="model"]', (sels) =>
     Array.from(sels[0].options).map((o) => ({ value: o.value, label: o.textContent })),
   )
@@ -138,7 +138,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/3] 会话列表与切换')
+  console.log('\n[3/4] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -176,6 +176,42 @@ try {
 
   const marked = await page.$$eval('.session-row[aria-current="true"]', (n) => n.length)
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
+
+  // ---- 工具行 · §06 ---------------------------------------------------------
+  console.log('\n[4/4] 工具行')
+  await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
+  await send(page)
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('.tool-row')].some((e) => e.textContent?.includes('Bash')),
+    { timeout: 120_000 },
+  )
+  const bashRow = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('.tool-row')]
+        .find((e) => e.textContent?.includes('Bash'))
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim() ?? '',
+  )
+  check('对话区出现 Bash 工具行', bashRow.includes('Bash'), bashRow)
+
+  // 展开按钮只在**结果回来、确实有输出**之后才出现(tool_use 时刻还没有),
+  // 所以必须先等本轮结束。
+  await settle(page)
+  const toggle = await page
+    .waitForSelector('.tool-block .tool-toggle', { timeout: 30_000 })
+    .catch(() => null)
+  if (toggle) {
+    await toggle.click()
+    await page.waitForSelector('.tool-output', { timeout: 10_000 })
+    const out = (await page.textContent('.tool-output')) ?? ''
+    check('展开后能看到命令输出', out.includes('e2e-tool-ok'), JSON.stringify(out.trim().slice(0, 40)))
+  } else {
+    check('工具行提供展开/收起', false, '未找到 .tool-toggle')
+  }
+
+  // 悬停动作行:复制
+  const copyBtns = await page.$$eval('.msg-action', (n) => n.map((e) => e.textContent))
+  check('每条消息都带复制动作', copyBtns.length > 0 && copyBtns.every((t) => t === '复制'), `${copyBtns.length} 个`)
 } catch (err) {
   failed++
   console.error('\n异常:', err?.message ?? err)

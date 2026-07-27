@@ -7,6 +7,7 @@
  * 不在测试里重打一遍实现 —— 重打的那份和线上跑的那份会分叉。
  */
 import { truncatePath, relativeTime } from '../src/renderer/src/lib/path.ts'
+import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
 
 let passed = 0
 let failed = 0
@@ -80,6 +81,72 @@ console.log('\nrelativeTime')
   eq('今天给时分', relativeTime(new Date(2026, 6, 27, 9, 5, 0).getTime(), now), '09:05')
   eq('昨天带前缀', relativeTime(new Date(2026, 6, 26, 22, 47, 0).getTime(), now), '昨天 22:47')
   eq('更早给月日', relativeTime(new Date(2026, 6, 24, 11, 8, 0).getTime(), now), '7/24 11:08')
+}
+
+console.log('\ntools —— 工具行归一化 §06')
+{
+  // Read
+  const read = rowFromToolUse('t1', 'Read', { file_path: 'src/main/chat.ts' })
+  eq('Read 取 file_path', read.tool === 'read' && read.path, 'src/main/chat.ts')
+
+  // Bash:请求时只有命令,结果回来才有输出
+  let bash = rowFromToolUse('t2', 'Bash', { command: 'npm run typecheck', description: '类型检查' })
+  eq('Bash 取 command', bash.tool === 'bash' && bash.command, 'npm run typecheck')
+  eq('Bash 请求时没有 stdout', bash.stdout, undefined)
+
+  bash = applyToolResult(bash, { stdout: 'ok\n', stderr: '', interrupted: false })
+  eq('Bash 结果填入 stdout', bash.stdout, 'ok\n')
+  eq('Bash 未中断', bash.interrupted, false)
+
+  const cut = applyToolResult(rowFromToolUse('t3', 'Bash', { command: 'sleep 99' }), {
+    stdout: '',
+    stderr: 'killed',
+    interrupted: true,
+  })
+  eq('Bash 中断标记', cut.interrupted, true)
+  eq('Bash stderr', cut.stderr, 'killed')
+
+  // Edit:加删行数要从 structuredPatch 里数出来
+  let edit = rowFromToolUse('t4', 'Edit', { file_path: 'a.ts', old_string: 'x', new_string: 'y' })
+  eq('Edit 请求时加删为 0', edit.tool === 'edit' && edit.added === 0 && edit.removed === 0, true)
+
+  edit = applyToolResult(edit, {
+    structuredPatch: [
+      {
+        oldStart: 168,
+        oldLines: 6,
+        newStart: 168,
+        newLines: 9,
+        lines: [' async setEffort(level) {', '-  await this.q?.close()', '+  const next = await this.reopen(level)', '+  this.q = next', ' }'],
+      },
+    ],
+  })
+  eq('Edit 数出新增行', edit.added, 2)
+  eq('Edit 数出删除行', edit.removed, 1)
+  eq('Edit 保留 hunk 起始行', edit.hunks[0]?.oldStart, 168)
+  eq('Edit 保留全部行', edit.hunks[0]?.lines.length, 5)
+
+  // TodoWrite:只看输入,不需要结果 —— 探针里 Claude 没调它,靠这里覆盖
+  const todo = rowFromToolUse('t5', 'TodoWrite', {
+    todos: [
+      { content: '读 chat.ts 的 resume 段', status: 'completed', activeForm: '正在读' },
+      { content: '改成原子操作', status: 'in_progress', activeForm: '正在改' },
+      { content: '加过渡态', status: 'pending', activeForm: '待办' },
+    ],
+  })
+  eq('TodoWrite 条目数', todo.tool === 'todo' && todo.todos.length, 3)
+  eq('TodoWrite 保留状态', todo.tool === 'todo' && todo.todos[1].status, 'in_progress')
+
+  // 认不出的工具降级,不猜、不硬画
+  const other = rowFromToolUse('t6', 'SomeFutureTool', { whatever: 1 })
+  eq('未知工具降级为 other', other.tool === 'other' && other.name, 'SomeFutureTool')
+
+  // 畸形输入不能把界面搞崩
+  eq('Read 缺 file_path 不抛', rowFromToolUse('t7', 'Read', undefined).tool, 'read')
+  eq('TodoWrite 的 todos 不是数组时为空', rowFromToolUse('t8', 'TodoWrite', { todos: 'nope' }).todos.length, 0)
+  eq('TodoWrite 非法状态降级为 pending', rowFromToolUse('t9', 'TodoWrite', { todos: [{ content: 'x', status: 'bogus' }] }).todos[0].status, 'pending')
+  eq('Edit 结果无 structuredPatch 不抛', applyToolResult(rowFromToolUse('t10', 'Edit', {}), {}).hunks.length, 0)
+  eq('Bash 结果为 null 不抛', applyToolResult(rowFromToolUse('t11', 'Bash', {}), null).interrupted, false)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

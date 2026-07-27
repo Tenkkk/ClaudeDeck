@@ -1,10 +1,12 @@
 import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { credentialEnv } from './config.js'
+import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   ChatEvent,
   ContextUsage,
   EffortLevel,
   PermissionMode,
+  ToolRow,
   UsageInfo,
 } from '../shared/ipc.js'
 
@@ -72,6 +74,8 @@ export class ChatSession {
   private inbox = new Inbox()
   private q: Query | null = null
   private pendingPermissions = new Map<string, (allow: boolean) => void>()
+  /** tool_use_id → 已发出的行,结果回来时按 id 补全。 */
+  private toolRows = new Map<string, ToolRow>()
 
   sessionId: string | null = null
 
@@ -139,7 +143,27 @@ export class ChatSession {
 
     if (msg.type === 'assistant') {
       for (const block of msg.message.content) {
-        if (block.type === 'tool_use') this.emit({ type: 'tool', name: block.name })
+        if (block.type === 'tool_use') {
+          const row = rowFromToolUse(block.id, block.name, block.input)
+          this.toolRows.set(block.id, row)
+          this.emit({ type: 'tool', row })
+        }
+      }
+      return
+    }
+
+    // 工具结果回来时是一条合成的 user 消息:content 里的 tool_result 块给出
+    // 它对应哪次调用,tool_use_result 给出结构化输出。
+    if (msg.type === 'user') {
+      const content = msg.message.content
+      if (!Array.isArray(content)) return
+      for (const block of content) {
+        if (block.type !== 'tool_result') continue
+        const pending = this.toolRows.get(block.tool_use_id)
+        if (!pending) continue
+        const filled = applyToolResult(pending, msg.tool_use_result)
+        this.toolRows.set(block.tool_use_id, filled)
+        this.emit({ type: 'toolUpdate', row: filled })
       }
       return
     }

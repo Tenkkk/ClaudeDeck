@@ -97,16 +97,53 @@ export interface SessionListItem {
   gitBranch?: string
 }
 
-export interface HistoryMessage {
-  role: 'user' | 'assistant'
-  text: string
+export interface DiffHunk {
+  oldStart: number
+  newStart: number
+  lines: string[]
 }
+
+export interface TodoItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+/**
+ * A tool call, already normalised for display.
+ *
+ * The SDK's tool inputs and outputs are shaped per tool; flattening them here
+ * in the main process keeps that knowledge in one place and lets the renderer
+ * render rows without knowing anything about the SDK.
+ */
+export type ToolRow =
+  | { id: string; tool: 'read'; path: string }
+  | {
+      id: string
+      tool: 'bash'
+      command: string
+      description?: string
+      stdout?: string
+      stderr?: string
+      interrupted?: boolean
+    }
+  | { id: string; tool: 'edit'; path: string; added: number; removed: number; hunks: DiffHunk[] }
+  | { id: string; tool: 'todo'; todos: TodoItem[] }
+  | { id: string; tool: 'other'; name: string }
+
+/** One entry in the transcript, in the order it happened. */
+export type TranscriptItem =
+  | { kind: 'user'; text: string }
+  | { kind: 'assistant'; text: string }
+  | { kind: 'tool'; row: ToolRow }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
 export type ChatEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'delta'; text: string }
-  | { type: 'tool'; name: string }
+  /** A tool call started. Carries everything known at request time. */
+  | { type: 'tool'; row: ToolRow }
+  /** The same row again once its result arrived — replace by `row.id`. */
+  | { type: 'toolUpdate'; row: ToolRow }
   | { type: 'permission'; requestId: string; toolName: string; input: unknown }
   | { type: 'done' }
   | { type: 'error'; message: string }
