@@ -16,11 +16,16 @@ import { useState } from 'react'
 export default function Message({
   role,
   text,
+  ts,
 }: {
   role: 'user' | 'assistant'
   text: string
+  ts?: number
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
+  const time = ts
+    ? new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : null
 
   return (
     <div className={`msg-wrap${role === 'user' ? ' user' : ''}`}>
@@ -36,6 +41,7 @@ export default function Message({
         >
           {copied ? '已复制' : '复制'}
         </button>
+        {time && <span className="msg-time">{time}</span>}
       </div>
     </div>
   )

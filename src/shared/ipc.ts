@@ -14,7 +14,17 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
  */
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
-export const EFFORT_LEVELS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max']
+/**
+ * 五个固定停靠点,不是连续滑块。控件条上只显示一个字,弹层里是
+ * 「更快 ←→ 更聪明」的停靠式滑轨(设计终稿 §07 / §08)。
+ */
+export const EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '很高' },
+  { value: 'max', label: '最大' },
+]
 
 export const PERMISSION_MODES: { value: PermissionMode; label: string; hint: string }[] = [
   { value: 'default', label: '询问', hint: '每次写入或执行前请求批准' },
@@ -130,10 +140,15 @@ export type ToolRow =
   | { id: string; tool: 'todo'; todos: TodoItem[] }
   | { id: string; tool: 'other'; name: string }
 
-/** One entry in the transcript, in the order it happened. */
+/**
+ * One entry in the transcript, in the order it happened.
+ *
+ * `ts` drives the timestamp in the hover action row — shown on hover only, so
+ * the transcript stays quiet until you reach for something.
+ */
 export type TranscriptItem =
-  | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string }
+  | { kind: 'user'; text: string; ts?: number }
+  | { kind: 'assistant'; text: string; ts?: number }
   | { kind: 'tool'; row: ToolRow }
 
 /** Streamed from main to renderer over the `chat:event` channel. */

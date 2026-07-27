@@ -388,7 +388,10 @@ kbd,
 }
 
 .sidebar-brand {
-  padding: var(--s16) var(--s16) var(--s12);
+  padding: var(--s16) var(--s12) var(--s12) var(--s16);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .sidebar-new {
@@ -447,22 +450,63 @@ kbd,
   background: var(--bg);
 }
 
-/* 展开箭头用 CSS 画,不用 ▸ ▾ 字符 —— 打包的拉丁字体没有几何符号字形,
-   靠系统回落会出豆腐块。画出来的三角在任何字体环境下都一样。 */
-.project-row .caret {
+/* 折叠箭头是内联 SVG(不用 ▸ ▾ 字符,打包字体里没有那些字形)。
+   展开时旋转 90°。 */
+.caret {
   flex: none;
-  width: 0;
-  height: 0;
-  margin: 0 var(--s4) 0 var(--s4);
-  border-left: 5px solid var(--mark);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  color: var(--mark);
   transition: transform 120ms ease;
-  transform-origin: 30% 50%;
 }
 
-.project-row[aria-expanded='true'] .caret {
+[aria-expanded='true'] > .caret {
   transform: rotate(90deg);
+}
+
+.project-row .folder {
+  flex: none;
+  color: var(--muted);
+}
+
+.project-row[aria-current='true'] .folder {
+  color: var(--accent);
+}
+
+/* 项目行右侧的「在这个项目里新建会话」,悬停才出现 */
+.project-line {
+  display: flex;
+  align-items: center;
+}
+
+.project-line .project-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-add {
+  flex: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  color: var(--muted);
+}
+
+.project-line:hover .project-add {
+  opacity: 1;
+}
+
+.project-add:hover {
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s4);
+  border-radius: var(--r-inline);
+  color: var(--muted);
 }
 
 .project-row .name {
@@ -538,6 +582,11 @@ kbd,
 .session-row .meta {
   font-size: var(--text-ui-s);
   color: var(--muted);
+}
+
+/* 当前会话的分支名走陶土色,其他会话保持中性 */
+.session-row[aria-current='true'] .branch {
+  color: var(--accent-ink);
 }
 
 .expand-all {
@@ -622,8 +671,15 @@ kbd,
   min-width: 0;
 }
 
+.crumb-folder {
+  flex: none;
+  color: var(--muted);
+}
+
 .crumb .project {
   color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-l);
   flex: none;
 }
 
@@ -724,6 +780,12 @@ kbd,
   color: var(--ink-2);
 }
 
+.msg-time {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted-2);
+}
+
 /* ---- 工具行 · §06 ----
  * 默认只有一行标题,视觉权重低于正文。有输出的给展开/收起。 */
 
@@ -741,6 +803,17 @@ kbd,
   font-family: var(--font-mono);
   font-size: var(--text-mono-l);
   color: var(--muted);
+}
+
+/* 工具行前面一小段横线,把它和正文分开 —— 它是过程,不是 Claude 在说话 */
+.tool-row::before {
+  content: '';
+  flex: none;
+  width: 18px;
+  height: 1px;
+  background: var(--border);
+  align-self: center;
+  margin-right: var(--s4);
 }
 
 .tool-name {
@@ -907,8 +980,9 @@ kbd,
   animation: cd-breathe 2.4s ease-in-out infinite;
 }
 
-/* 流式中的竖光标。正在输出的那条不出动作行 */
-.caret {
+/* 流式中的 2px 竖光标 · §07。正在输出的那条不出动作行。
+   注意别叫 .caret —— 侧栏的折叠箭头已经用了那个名字,撞上会把箭头压成 2px 竖条。 */
+.stream-caret {
   display: inline-block;
   width: 2px;
   height: 1em;
@@ -963,22 +1037,39 @@ kbd,
 
 /* ---- 输入区与控件条 · §05 ---- */
 
-.composer {
-  border-top: 1px solid var(--border);
-  background: var(--raised);
+/* §05:输入框与控件条是同一张卡,控件在卡内底部 */
+.composer-wrap {
   padding: var(--s12) var(--s20) var(--s16);
+}
+
+.composer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-bubble);
+  padding: var(--s12) var(--s12) var(--s8);
   display: grid;
   gap: var(--s8);
+}
+
+.composer:focus-within {
+  border-color: var(--focus);
 }
 
 .composer textarea {
   width: 100%;
   resize: none;
+  border: none;
+  background: transparent;
+  padding: 0 var(--s4);
   min-height: var(--h-composer-min);
   max-height: var(--h-composer-max);
   overflow-y: auto;
   line-height: 1.6;
-  background: var(--surface);
+}
+
+.composer textarea:focus {
+  outline: none;
+  border: none;
 }
 
 /* 左:权限。右:模型、努力、发送 */
@@ -992,10 +1083,25 @@ kbd,
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: var(--s8);
+  gap: var(--s12);
 }
 
-.chip {
+/* 弹层要相对各自的控件定位,并且朝上开 —— 控件条在窗口底部 */
+.control-slot {
+  position: relative;
+}
+
+.control-slot .popover {
+  position: absolute;
+  bottom: calc(100% + var(--s8));
+  z-index: 20;
+  display: grid;
+  gap: 1px;
+}
+
+/* ---- 权限胶囊 ---- */
+
+.chip.pill {
   display: inline-flex;
   align-items: center;
   gap: var(--s6);
@@ -1008,56 +1114,260 @@ kbd,
   white-space: nowrap;
 }
 
-.chip:hover {
+.chip.pill:hover {
   background: var(--bg);
 }
 
-/* 完全放行需要一个警示性的视觉区别 · §D2 */
-.chip.warn {
+/* 完全放行需要一个警示性的视觉区别 */
+.chip.pill.warn {
   color: var(--warn);
   border-color: var(--warn);
 }
 
-.chip .caret-down {
-  color: var(--mark);
-  font-size: 9px;
+.chip-icon {
+  font-size: 10px;
+  opacity: 0.75;
 }
 
-/* 骨架阶段:控件条里用原生 select 占位保住功能,第 5 步换成弹层。
-   把 select 的原生外观压平,让它看起来就是胶囊本身。 */
-.chip select {
-  font: inherit;
-  font-size: var(--text-ui-s);
-  color: inherit;
+.chip-caret {
+  width: 0;
+  height: 0;
+  border-top: 4px solid currentColor;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  opacity: 0.5;
+  margin-left: 1px;
+}
+
+/* ---- 模型:纯文字,不画容器 · §15 ---- */
+
+.model-btn {
   border: none;
   background: transparent;
-  padding: 0 var(--s4) 0 0;
-  cursor: pointer;
-  max-width: 22ch;
+  padding: var(--s4) var(--s6);
+  font-size: var(--text-ui-m);
+  color: var(--ink-2);
+  white-space: nowrap;
 }
 
-.chip select:focus {
-  outline: none;
+.model-btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink);
+}
+
+/* ---- 努力:只显示一个字 ---- */
+
+.effort-btn {
+  position: relative;
+  min-width: 30px;
+  padding: var(--s4) var(--s8);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  background: var(--bubble);
+  color: var(--ink-2);
+  font-size: var(--text-ui-s);
+}
+
+.effort-btn:hover {
+  background: var(--bubble-hover);
+}
+
+/* 切档时几百毫秒没有活着的 query,给个呼吸点,别让界面看起来卡死 */
+.effort-pending {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: var(--s6);
+  height: var(--s6);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  animation: cd-breathe 2.4s ease-in-out infinite;
+}
+
+/* ---- 弹层行 · §08 共用规格 ---- */
+
+.pop-group {
+  padding: var(--s6) var(--s12) var(--s4);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pop-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s8);
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-inline);
+  padding: 8px var(--s12);
+}
+
+.pop-row:hover {
+  background: var(--bg);
+}
+
+.pop-row.current {
+  background: var(--accent-tint);
+}
+
+.pop-row.warn.current,
+.pop-row.warn:hover {
+  background: var(--warn-tint);
+}
+
+.pop-check {
+  flex: none;
+  width: 12px;
+  color: var(--accent);
+  font-size: var(--text-ui-s);
+  line-height: 1.5;
+}
+
+.pop-body {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pop-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  color: var(--ink);
+}
+
+.pop-row.warn .pop-title {
+  color: var(--warn);
+}
+
+.pop-warn-icon {
+  font-size: 10px;
+}
+
+.pop-desc {
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.pop-index {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+/* ---- 努力弹层:停靠式滑轨,5 个固定停靠点 · §08 ---- */
+
+.effort-head {
+  padding: var(--s8) var(--s12) var(--s4);
+  color: var(--ink);
+}
+
+.effort-ends {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 var(--s12);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.effort-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  margin: var(--s6) var(--s12);
+  padding: var(--s6) 0;
+  position: relative;
+}
+
+.effort-track::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+}
+
+.effort-stop {
+  border: none;
+  background: transparent;
+  padding: var(--s6) 0;
+  display: flex;
+  justify-content: center;
+  position: relative;
+}
+
+.effort-stop:hover {
+  background: transparent;
+}
+
+.effort-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--mark);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.effort-stop:hover .effort-dot {
+  background: var(--ink-2);
+}
+
+.effort-stop.current .effort-dot {
+  background: var(--accent);
+  transform: scale(1.5);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.effort-note {
+  padding: var(--s4) var(--s12) var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ---- 发送 ⇄ 停止 ---- */
+
+.send {
+  min-width: 76px;
+  justify-content: center;
+}
+
+/* §07 次按钮的「停止」特例:陶土底色 + 一个实心小方块 */
+.btn-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s6);
+  background: var(--accent-tint);
+  border-color: var(--focus);
+  color: var(--accent-ink);
+}
+
+.btn-stop:hover {
+  background: var(--bubble-hover);
+}
+
+.stop-glyph {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 /* 子进程胶囊:没有后台任务时整颗消失,不留空位 · §11 */
 .chip.live {
   color: var(--live);
   border-color: var(--live);
-}
-
-.chip.live .dot {
-  width: var(--s6);
-  height: var(--s6);
-  border-radius: var(--r-pill);
-  background: var(--live);
-  animation: cd-breathe 2.4s ease-in-out infinite;
-}
-
-/* 输出中「发送」整颗变「停止」,不另设按钮 */
-.send {
-  min-width: 76px;
-  justify-content: center;
 }
 
 /* ============================================================

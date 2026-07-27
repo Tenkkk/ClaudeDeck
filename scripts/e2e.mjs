@@ -109,17 +109,26 @@ try {
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
   console.log('\n[2/4] 切换模型')
-  const options = await page.$$eval('select[data-control="model"]', (sels) =>
-    Array.from(sels[0].options).map((o) => ({ value: o.value, label: o.textContent })),
+  // 控件条上只显示第一个词,完整列表在弹层里(§15)
+  await page.click('[data-control="model"]')
+  await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
+  const options = await page.$$eval('.popover .pop-row .pop-title', (n) =>
+    n.map((e) => e.textContent?.trim() ?? ''),
   )
-  check('模型下拉已由 SDK 填充', options.length > 1, `${options.length} 项`)
-  console.log('        ' + options.map((o) => `${o.label} (${o.value})`).join('\n        '))
+  check('模型弹层已由 SDK 填充', options.length > 1, `${options.length} 项`)
+  console.log('        ' + options.join('\n        '))
 
-  const haiku = options.find((o) => /haiku/i.test(o.value))
+  const haiku = options.find((o) => /haiku/i.test(o))
   if (haiku) {
-    await page.selectOption('select[data-control="model"]', haiku.value)
-    const now = await page.$eval('select[data-control="model"]', (s) => s.value)
-    check('下拉切换到 Haiku', now === haiku.value, now)
+    await page.evaluate((label) => {
+      const row = [...document.querySelectorAll('.popover .pop-row')].find((r) =>
+        r.querySelector('.pop-title')?.textContent?.includes(label),
+      )
+      if (row) row.click()
+    }, haiku)
+    await page.waitForTimeout(400)
+    const shown = (await page.textContent('[data-control="model"]')) ?? ''
+    check('弹层切换到 Haiku,控件条只显示第一个词', shown.trim() === 'Haiku', shown.trim())
 
     const before = await page.$$eval('.msg-claude', (n) => n.length)
     await page.fill('.composer textarea', '只回复两个字:收到')

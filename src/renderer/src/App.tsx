@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import ControlBar from './components/ControlBar.js'
+import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
 import Sidebar from './components/Sidebar.js'
 import ToolRow from './components/ToolRow.js'
@@ -6,8 +8,6 @@ import Loading from './screens/Loading.js'
 import Onboarding from './screens/Onboarding.js'
 import ProjectPicker from './screens/ProjectPicker.js'
 import {
-  EFFORT_LEVELS,
-  PERMISSION_MODES,
   type AppConfig,
   type ChatEvent,
   type ContextUsage,
@@ -66,6 +66,8 @@ export default function App(): React.JSX.Element {
   const [permission, setPermission] = useState<PendingPermission | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  /** 切 Effort 要关掉旧 query 再 resume,中间几百毫秒没有活着的 query · §08 */
+  const [effortSwitching, setEffortSwitching] = useState(false)
   const transcriptRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -107,7 +109,7 @@ export default function App(): React.JSX.Element {
       } else if (event.type === 'tool') {
         // 工具行插在正文之间,所以先把已经流出来的文字定下来
         setStreaming((s) => {
-          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s }])
+          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
           return ''
         })
         setTranscript((t) => appendTool(t, event.row))
@@ -117,7 +119,7 @@ export default function App(): React.JSX.Element {
         setPermission({ requestId: event.requestId, toolName: event.toolName })
       } else if (event.type === 'done') {
         setStreaming((s) => {
-          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s }])
+          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
           return ''
         })
         setBusy(false)
@@ -178,7 +180,7 @@ export default function App(): React.JSX.Element {
     const text = draft.trim()
     if (!text || busy) return
     setDraft('')
-    setTranscript((t) => [...t, { kind: 'user', text }])
+    setTranscript((t) => [...t, { kind: 'user', text, ts: Date.now() }])
     setBusy(true)
     setError(null)
     await window.api.chat.send(text)
@@ -209,8 +211,6 @@ export default function App(): React.JSX.Element {
   }
 
   const mode = config?.permissionMode ?? 'default'
-  const modeLabel = PERMISSION_MODES.find((m) => m.value === mode)
-  const modelLabel = models.find((m) => m.value === (config?.model ?? 'default'))
   const activeProject = config?.projects.find((p) => p.path === config.activeWorkspace)
   const activeSessions = config?.activeWorkspace
     ? (sessionsByProject[config.activeWorkspace] ?? [])
@@ -228,6 +228,12 @@ export default function App(): React.JSX.Element {
         versions={versions}
         expandedAll={expandedAll}
         onNewSession={() => void newSession()}
+        onNewSessionIn={async (path) => {
+          if (path !== config?.activeWorkspace) {
+            setConfig(await window.api.projects.activate(path))
+          }
+          await newSession()
+        }}
         onOpenSession={(p, id) => void openSession(p, id)}
         onToggleCollapse={async (path, collapsed) => {
           setConfig(await window.api.projects.collapse(path, collapsed))
@@ -244,6 +250,7 @@ export default function App(): React.JSX.Element {
       <main className="main">
         {/* 归属行 · §05:项目 / 会话标题 / 上下文百分比 */}
         <div className="crumb">
+          <FolderIcon className="crumb-folder" />
           <span className="project">{activeProject?.name ?? '—'}</span>
           <span className="sep">/</span>
           <span className="title">
@@ -268,7 +275,7 @@ export default function App(): React.JSX.Element {
             item.kind === 'tool' ? (
               <ToolRow key={`${item.row.id}-${i}`} row={item.row} />
             ) : (
-              <Message key={i} role={item.kind} text={item.text} />
+              <Message key={i} role={item.kind} text={item.text} ts={item.ts} />
             ),
           )}
 
@@ -277,7 +284,7 @@ export default function App(): React.JSX.Element {
               {/* 正在输出的那条不出动作行 · §06 */}
               <div className="msg-claude">
                 {streaming}
-                <span className="caret" />
+                <span className="stream-caret" />
               </div>
             </div>
           )}
@@ -311,104 +318,54 @@ export default function App(): React.JSX.Element {
           {error && <div className="error-line">{error}</div>}
         </div>
 
-        <div className="composer">
-          <textarea
-            ref={composerRef}
-            value={draft}
-            placeholder="给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)"
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void send()
-              }
-            }}
-          />
+        {/* §05:输入框与控件条是同一张卡,控件在卡内底部 */}
+        <div className="composer-wrap">
+          <div className="composer">
+            <textarea
+              ref={composerRef}
+              value={draft}
+              placeholder="给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void send()
+                }
+              }}
+            />
 
-          {/* 控件条 · §05:左权限,右模型、努力、发送。
-              三个弹层在第 5 步实现,骨架阶段先用原生 select 保住功能。 */}
-          <div className="controls">
-            <label className="chip" title={modeLabel?.hint}>
-              <select
-                data-control="permission"
-                value={mode}
-                onChange={(e) => {
-                  const v = e.target.value as PermissionMode
-                  void window.api.chat.setPermissionMode(v)
-                  setConfig((c) => (c ? { ...c, permissionMode: v } : c))
-                }}
-              >
-                {PERMISSION_MODES.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="right">
-              <label className="chip model-label" title={modelLabel?.displayName}>
-                <select
-                  data-control="model"
-                  value={config?.model ?? 'default'}
-                  disabled={models.length === 0}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    void window.api.chat.setModel(v)
-                    setConfig((c) => (c ? { ...c, model: v } : c))
-                  }}
-                >
-                  {models.length === 0 && <option value="default">加载中…</option>}
-                  {models.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="chip" title="努力程度:越往右想得越久、也越贵">
-                <select
-                  data-control="effort"
-                  value={config?.effort ?? 'medium'}
-                  onChange={(e) => {
-                    const v = e.target.value as EffortLevel
-                    void window.api.chat.setEffort(v)
-                    setConfig((c) => (c ? { ...c, effort: v } : c))
-                  }}
-                >
-                  {EFFORT_LEVELS.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {/* 输出中「发送」整颗变「停止」,不另设按钮 · §05。
-                  data-state 是这两态唯一可靠的区分点 —— 二者共用同一个位置,
-                  只看类名或文本都容易在自动化里点错。 */}
-              {busy ? (
-                <button
-                  className="send"
-                  data-state="stop"
-                  onClick={() => void window.api.chat.interrupt()}
-                >
-                  停止
-                </button>
-              ) : (
-                <button
-                  className="primary send"
-                  data-state="send"
-                  disabled={!draft.trim()}
-                  onClick={() => void send()}
-                >
-                  发送
-                </button>
-              )}
-            </div>
+            <ControlBar
+              mode={mode}
+              models={models}
+              model={config?.model ?? 'default'}
+              effort={config?.effort ?? 'medium'}
+              busy={busy}
+              effortSwitching={effortSwitching}
+              canSend={Boolean(draft.trim())}
+              onMode={(v) => {
+                void window.api.chat.setPermissionMode(v)
+                setConfig((c) => (c ? { ...c, permissionMode: v } : c))
+              }}
+              onModel={(v) => {
+                void window.api.chat.setModel(v)
+                setConfig((c) => (c ? { ...c, model: v } : c))
+              }}
+              onEffort={async (v) => {
+                setConfig((c) => (c ? { ...c, effort: v } : c))
+                setEffortSwitching(true)
+                try {
+                  await window.api.chat.setEffort(v)
+                  setModels(await window.api.chat.models())
+                } finally {
+                  setEffortSwitching(false)
+                }
+              }}
+              onSend={() => void send()}
+              onStop={() => void window.api.chat.interrupt()}
+            />
           </div>
         </div>
+
       </main>
     </div>
   )

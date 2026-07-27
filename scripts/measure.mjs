@@ -44,7 +44,7 @@ function writeConfig(activeWorkspace) {
         projects: paths.map((path) => ({
           path,
           name: path.split(/[\\/]/).filter(Boolean).pop(),
-          collapsed: false,
+          collapsed: path !== activeWorkspace,
         })),
         activeWorkspace,
         model: null,
@@ -97,7 +97,8 @@ try {
   // 等模型列表填充,否则量到的是「加载中…」
   await page
     .waitForFunction(
-      () => document.querySelectorAll('select[data-control="model"] option').length > 1,
+      () => (document.querySelector('[data-control="model"]')?.textContent ?? '').trim().length > 1 &&
+        !(document.querySelector('[data-control="model"]')?.textContent ?? '').includes('…'),
       { timeout: 30_000 },
     )
     .catch(() => {})
@@ -137,6 +138,28 @@ try {
     eq(`${w}px 侧栏仍为 264`, r.sidebar, 264)
     ok(`${w}px 发送按钮不换行`, r.btnH > 0 && r.btnH <= 44, `${r.btnH}px`)
     if (w === 1200) await page.screenshot({ path: join(SHOT, 'screen-D-main.png') })
+  }
+
+  // 三个弹层各截一张,用于和设计终稿 §08 逐项对照
+  console.log('\n控件条弹层 · §08')
+  await page.setViewportSize({ width: 1200, height: 800 })
+  for (const [control, name] of [
+    ['permission', 'popover-permission'],
+    ['model', 'popover-model'],
+    ['effort', 'popover-effort'],
+  ]) {
+    await page.click(`[data-control="${control}"]`)
+    await page.waitForSelector('.popover', { timeout: 5_000 })
+    await page.waitForTimeout(200)
+    const box = await page.evaluate(() => {
+      const p = document.querySelector('.popover')
+      const r = p.getBoundingClientRect()
+      return { w: Math.round(r.width), rows: p.querySelectorAll('.pop-row, .effort-stop').length }
+    })
+    ok(`${control} 弹层已开`, box.rows > 0, `${box.w}px 宽 · ${box.rows} 项`)
+    await page.screenshot({ path: join(SHOT, `${name}.png`) })
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(150)
   }
 } finally {
   await app?.close().catch(() => {})

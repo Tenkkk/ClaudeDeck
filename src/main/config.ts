@@ -54,7 +54,12 @@ function migrate(raw: StoredConfig & LegacyConfig): StoredConfig {
   const legacy = Array.isArray(raw.workspaces) ? raw.workspaces : []
   return {
     ...raw,
-    projects: legacy.map((path) => ({ path, name: projectName(path), collapsed: false })),
+    // 只展开当前项目 —— 全都展开的话,几个项目就把侧栏塞满了
+    projects: legacy.map((path) => ({
+      path,
+      name: projectName(path),
+      collapsed: path !== raw.activeWorkspace,
+    })),
   }
 }
 
@@ -135,11 +140,12 @@ export function readApiKey(): string | null {
 }
 
 /** Adds a project (idempotent by path) and makes it active. */
+/** 新增的项目会成为当前项目,所以它展开、其余保持原状。 */
 export function addProject(path: string): AppConfig {
   const c = load()
   const existing = c.projects.find((p) => p.path === path)
   const projects = existing
-    ? c.projects
+    ? c.projects.map((p) => (p.path === path ? { ...p, collapsed: false } : p))
     : [...c.projects, { path, name: projectName(path), collapsed: false }]
   persist({ ...c, projects, activeWorkspace: path })
   return getConfig()

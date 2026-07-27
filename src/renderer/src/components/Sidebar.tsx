@@ -1,3 +1,4 @@
+import { CaretIcon, FolderIcon, PlusIcon, SearchIcon } from './Icons.js'
 import { relativeTime } from '../lib/path.js'
 import type { Project, SessionListItem, UsageInfo, Versions } from '../../../shared/ipc.js'
 
@@ -18,6 +19,7 @@ export default function Sidebar({
   versions,
   expandedAll,
   onNewSession,
+  onNewSessionIn,
   onOpenSession,
   onToggleCollapse,
   onExpandAll,
@@ -32,6 +34,7 @@ export default function Sidebar({
   versions: Versions | null
   expandedAll: Record<string, boolean>
   onNewSession: () => void
+  onNewSessionIn: (projectPath: string) => void
   onOpenSession: (projectPath: string, sessionId: string) => void
   onToggleCollapse: (path: string, collapsed: boolean) => void
   onExpandAll: (path: string) => void
@@ -45,6 +48,10 @@ export default function Sidebar({
           <span className="brand-dot" />
           ClaudeDeck
         </span>
+        {/* 跨会话搜索是终稿明确「没画」的一项(§09),这里先占位并说明 */}
+        <button className="ghost icon-btn" title="搜索(尚未实现)" disabled>
+          <SearchIcon />
+        </button>
       </div>
 
       <div className="sidebar-new">
@@ -79,22 +86,37 @@ export default function Sidebar({
 
           return (
             <div key={project.path}>
-              <button
-                className="project-row"
-                aria-expanded={open}
-                aria-current={project.path === activeWorkspace}
-                title={project.path}
-                onClick={() => onToggleCollapse(project.path, open)}
-              >
-                <span className="caret" />
-                <span className="name">{project.name}</span>
-                <span className="count">{sessions.length}</span>
-              </button>
+              <div className="project-line">
+                <button
+                  className="project-row"
+                  aria-expanded={open}
+                  aria-current={project.path === activeWorkspace}
+                  title={project.path}
+                  onClick={() => onToggleCollapse(project.path, open)}
+                >
+                  <span className="caret">
+                    <CaretIcon />
+                  </span>
+                  <FolderIcon className="folder" />
+                  <span className="name">{project.name}</span>
+                  <span className="count">{sessions.length}</span>
+                </button>
+                <button
+                  className="ghost icon-btn project-add"
+                  title={`在 ${project.name} 里新建会话`}
+                  onClick={() => onNewSessionIn(project.path)}
+                >
+                  <PlusIcon />
+                </button>
+              </div>
 
               {open && (
                 <>
                   {/* .claude 节点挂在项目名和会话之间 · §10。中栏在第 7 步实现 */}
                   <button className="claude-node" disabled title="读写中栏在第 7 步实现">
+                    <span className="caret">
+                      <CaretIcon />
+                    </span>
                     <span className="mono">.claude</span>
                     <span className="hint">配置</span>
                   </button>
@@ -114,7 +136,13 @@ export default function Sidebar({
                       <span className="title">{s.title}</span>
                       <span className="meta">
                         {relativeTime(s.lastModified)}
-                        {s.gitBranch ? ` · ${s.gitBranch}` : ''}
+                        {/* 当前会话的分支名走陶土色,其他会话保持中性 */}
+                        {s.gitBranch ? (
+                          <>
+                            {' · '}
+                            <span className="branch">{s.gitBranch}</span>
+                          </>
+                        ) : null}
                       </span>
                     </button>
                   ))}
