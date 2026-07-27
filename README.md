@@ -40,6 +40,17 @@ npm install
 npm run dev
 ```
 
+> **国内网络补充。** `npm install` 只装 Electron 的壳包,真正的二进制由
+> postinstall 从 GitHub 下载,在国内常常静默失败,表现为启动时报
+> `Error: Electron uninstall`。补下载:
+>
+> ```bash
+> ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" node node_modules/electron/install.js
+> ```
+>
+> 镜像**没有**写进仓库的 `.npmrc`:CI 构建的是用户会下载安装的产物,
+> 那条链路应当只从官方源取二进制。
+
 ## 打包安装程序
 
 ```bash
