@@ -31,13 +31,21 @@ const PROJECTS = [
 ]
 
 function writeConfig(activeWorkspace) {
+  // activeWorkspace 必须也在项目清单里 —— 侧栏只列 projects
+  const paths = activeWorkspace && !PROJECTS.includes(activeWorkspace)
+    ? [activeWorkspace, ...PROJECTS]
+    : PROJECTS
   writeFileSync(
     join(UD, 'config.json'),
     JSON.stringify(
       {
         baseUrl: '',
         apiKeyCipher: null,
-        workspaces: PROJECTS,
+        projects: paths.map((path) => ({
+          path,
+          name: path.split(/[\\/]/).filter(Boolean).pop(),
+          collapsed: false,
+        })),
         activeWorkspace,
         model: null,
         effort: 'high',

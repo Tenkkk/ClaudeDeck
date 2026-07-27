@@ -8,7 +8,15 @@ import {
   renameSession,
 } from '@anthropic-ai/claude-agent-sdk'
 import { ChatSession } from './chat.js'
-import { getConfig, rememberWorkspace, setApiKey, updateConfig } from './config.js'
+import {
+  addProject,
+  getConfig,
+  removeProject,
+  setActiveWorkspace,
+  setApiKey,
+  setProjectCollapsed,
+  updateConfig,
+} from './config.js'
 import { installCli, runDoctor } from './doctor.js'
 import type {
   ChatEvent,
@@ -16,6 +24,7 @@ import type {
   HistoryMessage,
   PermissionMode,
   SessionListItem,
+  Versions,
 } from '../shared/ipc.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -83,30 +92,49 @@ function registerIpc(): void {
   ipcMain.handle('config:update', (_e, patch) => updateConfig(patch))
   ipcMain.handle('config:setApiKey', (_e, key: string | null) => setApiKey(key))
 
-  ipcMain.handle('workspace:pick', async () => {
+  ipcMain.handle('projects:add', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
-      title: '选择 ClaudeDeck 的工作目录',
+      title: '选择一个项目目录',
     })
     if (result.canceled || !result.filePaths[0]) return getConfig()
-    return rememberWorkspace(result.filePaths[0])
+    return addProject(result.filePaths[0])
   })
 
-  ipcMain.handle('workspace:use', (_e, dir: string) => rememberWorkspace(dir))
+  ipcMain.handle('projects:activate', (_e, path: string) => setActiveWorkspace(path))
+  ipcMain.handle('projects:remove', (_e, path: string) => removeProject(path))
+  ipcMain.handle('projects:collapse', (_e, path: string, collapsed: boolean) =>
+    setProjectCollapsed(path, collapsed),
+  )
 
   // The SDK's session store is the single source of truth for chat history.
   // ClaudeDeck deliberately keeps no parallel copy of conversations.
-  ipcMain.handle('sessions:list', async (): Promise<SessionListItem[]> => {
+  //
+  // Sessions are scoped by directory, so the sidebar's two-level grouping means
+  // one listSessions call per project, keyed by project path.
+  ipcMain.handle('sessions:byProject', async (): Promise<Record<string, SessionListItem[]>> => {
     const config = getConfig()
-    if (!config.activeWorkspace) return []
-    const sessions = await listSessions({ dir: config.activeWorkspace, limit: 200 })
-    return sessions.map((s) => ({
-      sessionId: s.sessionId,
-      title: s.customTitle || s.summary || s.firstPrompt || '未命名会话',
-      preview: s.firstPrompt ?? '',
-      lastModified: s.lastModified,
-      gitBranch: s.gitBranch,
-    }))
+    const out: Record<string, SessionListItem[]> = {}
+    await Promise.all(
+      config.projects.map(async (project) => {
+        try {
+          const sessions = await listSessions({ dir: project.path, limit: 200 })
+          out[project.path] = sessions.map((s) => ({
+            sessionId: s.sessionId,
+            title: s.customTitle || s.summary || s.firstPrompt || '未命名会话',
+            preview: s.firstPrompt ?? '',
+            lastModified: s.lastModified,
+            gitBranch: s.gitBranch,
+          }))
+        } catch {
+          // A project directory can be renamed or unplugged between launches.
+          // An unreadable project shows as empty rather than taking down the
+          // whole sidebar.
+          out[project.path] = []
+        }
+      }),
+    )
+    return out
   })
 
   ipcMain.handle('sessions:history', async (_e, sessionId: string): Promise<HistoryMessage[]> => {
@@ -153,6 +181,14 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('chat:models', () => active?.listModels() ?? [])
+  ipcMain.handle('chat:usage', () => active?.usage() ?? null)
+  ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
+
+  ipcMain.handle('app:versions', async (): Promise<Versions> => {
+    const report = await runDoctor()
+    return { app: app.getVersion(), cli: report.cliVersion ?? null }
+  })
+
   ipcMain.handle('chat:interrupt', () => active?.interrupt())
   ipcMain.handle('chat:permission', (_e, requestId: string, allow: boolean) => {
     active?.answerPermission(requestId, allow)

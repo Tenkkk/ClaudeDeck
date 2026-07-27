@@ -4,19 +4,21 @@ import type { AppConfig } from '../../../shared/ipc.js'
 /**
  * 屏幕 C · 选择项目 —— 设计终稿 §04。
  *
- * 原「选择工作目录」。这一屏之后不再出现:项目列表进了侧栏,切项目在侧栏点。
- * 只有全部项目都被删掉时才会再看到它的空态。
+ * 原「选择工作目录」。进入主界面后项目在侧栏管理,这一屏只在没有任何项目、
+ * 或用户从侧栏主动回来管理时出现。
  */
 export default function ProjectPicker({
   config,
-  onPick,
+  onAdd,
   onUse,
+  onRemove,
 }: {
   config: AppConfig | null
-  onPick: () => void | Promise<void>
-  onUse: (dir: string) => void | Promise<void>
+  onAdd: () => void | Promise<void>
+  onUse: (path: string) => void | Promise<void>
+  onRemove: (path: string) => void | Promise<void>
 }): React.JSX.Element {
-  const projects = config?.workspaces ?? []
+  const projects = config?.projects ?? []
   const empty = projects.length === 0
 
   return (
@@ -36,21 +38,25 @@ export default function ProjectPicker({
 
         {!empty && (
           <section>
-            {projects.map((dir) => (
-              <button
-                key={dir}
-                className="project-pick"
-                title={dir}
-                onClick={() => void onUse(dir)}
-              >
-                <span className="name">{dir.split(/[\\/]/).filter(Boolean).pop()}</span>
-                <span className="path">{truncatePath(dir)}</span>
-              </button>
+            {projects.map((p) => (
+              <div key={p.path} className="project-pick-row">
+                <button className="project-pick" title={p.path} onClick={() => void onUse(p.path)}>
+                  <span className="name">{p.name}</span>
+                  <span className="path">{truncatePath(p.path)}</span>
+                </button>
+                <button
+                  className="ghost"
+                  title="从列表中移除(不会删除磁盘上的目录或会话)"
+                  onClick={() => void onRemove(p.path)}
+                >
+                  移除
+                </button>
+              </div>
             ))}
           </section>
         )}
 
-        <button className="primary" onClick={() => void onPick()}>
+        <button className="primary" onClick={() => void onAdd()}>
           ＋ 添加项目…
         </button>
       </div>

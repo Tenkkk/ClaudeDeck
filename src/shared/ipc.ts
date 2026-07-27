@@ -31,15 +31,55 @@ export interface DoctorReport {
   credentialsConfigured: boolean
 }
 
+/**
+ * A project is a working directory. Claude Code scopes sessions by directory,
+ * so the sidebar's two-level grouping is projects → their sessions.
+ */
+export interface Project {
+  path: string
+  /** Display name — the last path segment, unless the user renames it. */
+  name: string
+  collapsed: boolean
+}
+
 /** Non-secret app preferences. The API key is never included. */
 export interface AppConfig {
   baseUrl: string
   hasApiKey: boolean
-  workspaces: string[]
+  projects: Project[]
   activeWorkspace: string | null
   model: string | null
   effort: EffortLevel
   permissionMode: PermissionMode
+}
+
+/**
+ * Quota and spend. The rate-limit half comes from an API whose own name says
+ * DO_NOT_RELY_ON_THIS_API_YET, and API-key / Bedrock / Vertex sessions get
+ * `available: false`. When it is false the whole quota block disappears from
+ * the UI — no empty slot, no "unknown", and above all no possibly-wrong number.
+ */
+export interface UsageInfo {
+  available: boolean
+  subscriptionType: string | null
+  fiveHour: number | null
+  sevenDay: number | null
+  sevenDayOpus: number | null
+  fiveHourResetsAt: string | null
+  sevenDayResetsAt: string | null
+  sessionCostUsd: number
+}
+
+/** Context window pressure. Over 80% is the only warning before auto-compaction. */
+export interface ContextUsage {
+  percentage: number
+  totalTokens: number
+  maxTokens: number
+}
+
+export interface Versions {
+  app: string
+  cli: string | null
 }
 
 export interface ModelOption {

@@ -19,7 +19,8 @@
 5. **`resume` 时保持 `forkSession: false`。** 否则会分叉出新的 session id,
    侧边栏里用户点开的那一条就不再是继续增长的那一条。
 6. **不要给会话做本地副本。** SDK 的 session store 是单一事实来源。
-   本地只存偏好和加密后的凭据。
+   本地只存偏好和加密后的凭据。会话按项目分组 = 对每个项目各调一次
+   `listSessions({ dir })` 再合并,不要自己建索引。
 7. **API Key 只走 `safeStorage`。** 任何时候都不要把明文 key 写进文件或日志,
    也不要经 IPC 传给渲染层。
 

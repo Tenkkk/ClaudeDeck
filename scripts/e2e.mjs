@@ -41,7 +41,10 @@ function check(label, ok, detail = '') {
   }
 }
 
-// 预置配置,跳过首启引导与原生目录选择框(那是系统对话框,自动化驱动不了)
+// 预置配置,跳过首启引导与原生目录选择框(那是系统对话框,自动化驱动不了)。
+//
+// 这里刻意写**旧版**的 `workspaces: string[]` 结构:项目模型上线后,
+// 老用户的配置就长这样。侧栏能列出这个项目,就说明迁移逻辑生效了。
 mkdirSync(USER_DATA, { recursive: true })
 writeFileSync(
   join(USER_DATA, 'config.json'),
@@ -78,6 +81,14 @@ try {
 
   await page.waitForSelector('.composer textarea', { timeout: 20_000 })
   check('直接进入主界面(未卡在引导页)', true)
+
+  // 旧结构的 workspaces 应当被迁移成项目,并出现在侧栏
+  const projectNames = await page.$$eval('.project-row .name', (n) => n.map((e) => e.textContent))
+  check(
+    '旧版 workspaces 已迁移为项目',
+    projectNames.length === 1 && WORKSPACE.endsWith(projectNames[0]),
+    projectNames.join(', '),
+  )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
   console.log('\n[1/3] 聊天')

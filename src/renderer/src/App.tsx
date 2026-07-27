@@ -3,18 +3,20 @@ import Sidebar from './components/Sidebar.js'
 import Loading from './screens/Loading.js'
 import Onboarding from './screens/Onboarding.js'
 import ProjectPicker from './screens/ProjectPicker.js'
-import { FAKE_HEADER } from './fake.js'
 import {
   EFFORT_LEVELS,
   PERMISSION_MODES,
   type AppConfig,
   type ChatEvent,
+  type ContextUsage,
   type DoctorReport,
   type EffortLevel,
   type HistoryMessage,
   type ModelOption,
   type PermissionMode,
   type SessionListItem,
+  type UsageInfo,
+  type Versions,
 } from '../../shared/ipc.js'
 
 type Phase = 'loading' | 'onboarding' | 'projects' | 'workspace'
@@ -24,16 +26,23 @@ interface PendingPermission {
   toolName: string
 }
 
+/** 上下文过 80% 转警示色 —— 自动压缩唯一的预告 · §06 */
+const CONTEXT_WARN_AT = 80
+
 export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading')
   const [doctor, setDoctor] = useState<DoctorReport | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
-  const [sessions, setSessions] = useState<SessionListItem[]>([])
+  const [sessionsByProject, setSessionsByProject] = useState<Record<string, SessionListItem[]>>({})
+  const [expandedAll, setExpandedAll] = useState<Record<string, boolean>>({})
   const [activeSession, setActiveSession] = useState<string | null>(null)
   const [messages, setMessages] = useState<HistoryMessage[]>([])
   const [streaming, setStreaming] = useState('')
   const [busy, setBusy] = useState(false)
   const [models, setModels] = useState<ModelOption[]>([])
+  const [usage, setUsage] = useState<UsageInfo | null>(null)
+  const [context, setContext] = useState<ContextUsage | null>(null)
+  const [versions, setVersions] = useState<Versions | null>(null)
   const [permission, setPermission] = useState<PendingPermission | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -41,7 +50,14 @@ export default function App(): React.JSX.Element {
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
   const refreshSessions = useCallback(async () => {
-    setSessions(await window.api.sessions.list())
+    setSessionsByProject(await window.api.sessions.byProject())
+  }, [])
+
+  /** 额度与上下文都随对话变化,每轮结束刷新一次。 */
+  const refreshMeters = useCallback(async () => {
+    const [u, c] = await Promise.all([window.api.chat.usage(), window.api.chat.context()])
+    setUsage(u)
+    setContext(c)
   }, [])
 
   const decidePhase = useCallback((report: DoctorReport, cfg: AppConfig) => {
@@ -59,6 +75,7 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     void reload()
+    void window.api.app.versions().then(setVersions)
   }, [reload])
 
   useEffect(() => {
@@ -76,12 +93,13 @@ export default function App(): React.JSX.Element {
         })
         setBusy(false)
         void refreshSessions()
+        void refreshMeters()
       } else if (event.type === 'error') {
         setError(event.message)
         setBusy(false)
       }
     })
-  }, [refreshSessions])
+  }, [refreshSessions, refreshMeters])
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight })
@@ -90,8 +108,11 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     if (phase !== 'workspace') return
     void refreshSessions()
-    void window.api.chat.open().then(() => window.api.chat.models().then(setModels))
-  }, [phase, refreshSessions])
+    void window.api.chat.open().then(async () => {
+      setModels(await window.api.chat.models())
+      await refreshMeters()
+    })
+  }, [phase, refreshSessions, refreshMeters])
 
   // 输入框自动增高,到 --h-composer-max 封顶后内部滚动 · §07
   useEffect(() => {
@@ -101,13 +122,18 @@ export default function App(): React.JSX.Element {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [draft])
 
-  async function openSession(sessionId: string): Promise<void> {
-    setActiveSession(sessionId)
+  /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
+  async function openSession(projectPath: string, sessionId: string): Promise<void> {
     setStreaming('')
     setError(null)
+    if (projectPath !== config?.activeWorkspace) {
+      setConfig(await window.api.projects.activate(projectPath))
+    }
+    setActiveSession(sessionId)
     setMessages(await window.api.sessions.history(sessionId))
     await window.api.chat.open(sessionId)
     setModels(await window.api.chat.models())
+    await refreshMeters()
   }
 
   async function newSession(): Promise<void> {
@@ -116,6 +142,7 @@ export default function App(): React.JSX.Element {
     setStreaming('')
     setError(null)
     await window.api.chat.open()
+    await refreshMeters()
   }
 
   async function send(): Promise<void> {
@@ -138,15 +165,16 @@ export default function App(): React.JSX.Element {
     return (
       <ProjectPicker
         config={config}
-        onPick={async () => {
-          const cfg = await window.api.workspace.pick()
+        onAdd={async () => {
+          const cfg = await window.api.projects.add()
           setConfig(cfg)
           if (cfg.activeWorkspace) setPhase('workspace')
         }}
-        onUse={async (dir) => {
-          setConfig(await window.api.workspace.use(dir))
+        onUse={async (path) => {
+          setConfig(await window.api.projects.activate(path))
           setPhase('workspace')
         }}
+        onRemove={async (path) => setConfig(await window.api.projects.remove(path))}
       />
     )
   }
@@ -154,33 +182,49 @@ export default function App(): React.JSX.Element {
   const mode = config?.permissionMode ?? 'default'
   const modeLabel = PERMISSION_MODES.find((m) => m.value === mode)
   const modelLabel = models.find((m) => m.value === (config?.model ?? 'default'))
-  const contextWarn = FAKE_HEADER.contextPercent > 80
+  const activeProject = config?.projects.find((p) => p.path === config.activeWorkspace)
+  const activeSessions = config?.activeWorkspace
+    ? (sessionsByProject[config.activeWorkspace] ?? [])
+    : []
+  const contextWarn = (context?.percentage ?? 0) >= CONTEXT_WARN_AT
 
   return (
     <div className="shell">
       <Sidebar
+        projects={config?.projects ?? []}
+        sessionsByProject={sessionsByProject}
         activeWorkspace={config?.activeWorkspace ?? null}
-        sessions={sessions}
         activeSession={activeSession}
+        usage={usage}
+        versions={versions}
+        expandedAll={expandedAll}
         onNewSession={() => void newSession()}
-        onOpenSession={(id) => void openSession(id)}
+        onOpenSession={(p, id) => void openSession(p, id)}
+        onToggleCollapse={async (path, collapsed) => {
+          setConfig(await window.api.projects.collapse(path, collapsed))
+        }}
+        onExpandAll={(path) => setExpandedAll((e) => ({ ...e, [path]: true }))}
+        onAddProject={async () => {
+          const cfg = await window.api.projects.add()
+          setConfig(cfg)
+          await refreshSessions()
+        }}
         onManageProjects={() => setPhase('projects')}
       />
 
       <main className="main">
         {/* 归属行 · §05:项目 / 会话标题 / 上下文百分比 */}
         <div className="crumb">
-          <span className="project">
-            {config?.activeWorkspace?.split(/[\\/]/).filter(Boolean).pop() ?? '—'}
-          </span>
+          <span className="project">{activeProject?.name ?? '—'}</span>
           <span className="sep">/</span>
           <span className="title">
-            {sessions.find((s) => s.sessionId === activeSession)?.title ?? '新会话'}
+            {activeSessions.find((s) => s.sessionId === activeSession)?.title ?? '新会话'}
           </span>
-          {/* 上下文百分比要等第 3 步的 get_context_usage,骨架阶段用假值 */}
-          <span className={`context${contextWarn ? ' warn' : ''}`}>
-            上下文 {FAKE_HEADER.contextPercent}%
-          </span>
+          {context && (
+            <span className={`context${contextWarn ? ' warn' : ''}`}>
+              上下文 {Math.round(context.percentage)}%
+            </span>
+          )}
         </div>
 
         <div className="transcript" ref={transcriptRef}>
@@ -213,12 +257,10 @@ export default function App(): React.JSX.Element {
           )}
 
           {permission && (
-            <div className="popover prose" style={{ padding: 'var(--s16)', width: '100%', maxWidth: 'var(--w-prose)' }}>
+            <div className="permission-card">
               <strong>Claude 想使用工具:{permission.toolName}</strong>
-              <div className="hint" style={{ margin: '6px 0 12px' }}>
-                在你点下之前,对话停在这里。
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--s8)' }}>
+              <div className="hint">在你点下之前,对话停在这里。</div>
+              <div className="row">
                 <button
                   className="primary"
                   onClick={() => {
@@ -240,7 +282,7 @@ export default function App(): React.JSX.Element {
             </div>
           )}
 
-          {error && <div style={{ color: 'var(--warn)' }}>{error}</div>}
+          {error && <div className="error-line">{error}</div>}
         </div>
 
         <div className="composer">

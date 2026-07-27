@@ -314,6 +314,29 @@ kbd,
 }
 
 /* §04:项目行 */
+.project-pick-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.project-pick-row .project-pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-pick-row > .ghost {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-ui-s);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.project-pick-row:hover > .ghost {
+  opacity: 1;
+}
+
 .project-pick {
   display: grid;
   gap: var(--s4);
@@ -711,6 +734,35 @@ kbd,
   display: grid;
   gap: var(--s12);
   justify-items: center;
+}
+
+.session-empty {
+  padding: var(--s8) var(--s12) var(--s8) calc(var(--s16) + var(--s12));
+}
+
+/* §06 权限卡:行内,不弹窗 —— 弹窗会遮住上文,而你要看的正是上文。
+   陶土左条 = 在拦你(计划卡是沙绿左条 = 在等你满意)。 */
+.permission-card {
+  width: 100%;
+  max-width: var(--w-prose);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-popover);
+  padding: var(--s16);
+  display: grid;
+  gap: var(--s8);
+}
+
+.row {
+  display: flex;
+  gap: var(--s8);
+  align-items: center;
+}
+
+.error-line {
+  color: var(--warn);
+  font-size: var(--text-ui-s);
 }
 
 /* ---- 输入区与控件条 · §05 ---- */

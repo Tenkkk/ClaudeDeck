@@ -117,7 +117,7 @@ git tag v0.1.0 && git push origin v0.1.0
 
 **会话不做本地副本。** SDK 自带 `listSessions` / `getSessionMessages` /
 `renameSession` / `deleteSession`,其 session store 即单一事实来源,
-应用只保存自己的偏好(工作目录、模型、Effort、权限档、凭据)。
+应用只保存自己的偏好:项目清单(路径/显示名/折叠状态)、模型、Effort、权限档、凭据。
 
 ## 文件结构
 

@@ -1,6 +1,12 @@
 import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { credentialEnv } from './config.js'
-import type { ChatEvent, EffortLevel, PermissionMode } from '../shared/ipc.js'
+import type {
+  ChatEvent,
+  ContextUsage,
+  EffortLevel,
+  PermissionMode,
+  UsageInfo,
+} from '../shared/ipc.js'
 
 /**
  * A push-driven AsyncIterable used as the SDK's `prompt`.
@@ -172,6 +178,50 @@ export class ChatSession {
   async listModels(): Promise<{ value: string; displayName: string }[]> {
     const models = await this.q?.supportedModels()
     return (models ?? []).map((m) => ({ value: m.value, displayName: m.displayName }))
+  }
+
+  /** Context window pressure. Over 80% is the only warning before compaction. */
+  async contextUsage(): Promise<ContextUsage | null> {
+    if (!this.q) return null
+    try {
+      const r = await this.q.getContextUsage()
+      return {
+        percentage: r.percentage,
+        totalTokens: r.totalTokens,
+        maxTokens: r.maxTokens,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Quota and spend.
+   *
+   * The underlying method is named DO_NOT_RELY_ON_THIS_API_YET, and API-key /
+   * Bedrock / Vertex sessions report rate_limits_available: false. Both cases
+   * are handled the same way: report `available: false` and let the UI drop the
+   * whole block. Session cost is still meaningful either way.
+   */
+  async usage(): Promise<UsageInfo | null> {
+    if (!this.q) return null
+    try {
+      const r = await this.q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()
+      // rate_limits 整体可空,单项也可空,utilization 本身还能是 null —— 三层都要防。
+      const limits = r.rate_limits ?? {}
+      return {
+        available: r.rate_limits_available,
+        subscriptionType: r.subscription_type,
+        fiveHour: limits.five_hour?.utilization ?? null,
+        sevenDay: limits.seven_day?.utilization ?? null,
+        sevenDayOpus: limits.seven_day_opus?.utilization ?? null,
+        fiveHourResetsAt: limits.five_hour?.resets_at ?? null,
+        sevenDayResetsAt: limits.seven_day?.resets_at ?? null,
+        sessionCostUsd: r.session.total_cost_usd,
+      }
+    } catch {
+      return null
+    }
   }
 
   async interrupt(): Promise<void> {

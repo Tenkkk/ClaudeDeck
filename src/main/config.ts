@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import type { AppConfig, EffortLevel, PermissionMode } from '../shared/ipc.js'
+import { basename, dirname, join } from 'node:path'
+import type { AppConfig, EffortLevel, PermissionMode, Project } from '../shared/ipc.js'
 
 /**
  * Preferences live in userData/config.json. The API key is stored in the same
@@ -12,17 +12,22 @@ import type { AppConfig, EffortLevel, PermissionMode } from '../shared/ipc.js'
 interface StoredConfig {
   baseUrl: string
   apiKeyCipher: string | null
-  workspaces: string[]
+  projects: Project[]
   activeWorkspace: string | null
   model: string | null
   effort: EffortLevel
   permissionMode: PermissionMode
 }
 
+/** Shape written by versions before projects existed. */
+interface LegacyConfig {
+  workspaces?: string[]
+}
+
 const DEFAULTS: StoredConfig = {
   baseUrl: '',
   apiKeyCipher: null,
-  workspaces: [],
+  projects: [],
   activeWorkspace: null,
   model: null,
   effort: 'medium',
@@ -35,13 +40,31 @@ function configPath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
 
+export function projectName(path: string): string {
+  return basename(path.replace(/[\\/]+$/, '')) || path
+}
+
+/**
+ * `workspaces: string[]` was a most-recently-used list; projects are a managed
+ * set with display names and collapse state. Migrate rather than drop, so an
+ * existing install keeps its directories.
+ */
+function migrate(raw: StoredConfig & LegacyConfig): StoredConfig {
+  if (Array.isArray(raw.projects) && raw.projects.length > 0) return raw
+  const legacy = Array.isArray(raw.workspaces) ? raw.workspaces : []
+  return {
+    ...raw,
+    projects: legacy.map((path) => ({ path, name: projectName(path), collapsed: false })),
+  }
+}
+
 function load(): StoredConfig {
   if (cache) return cache
   const file = configPath()
   let next: StoredConfig = { ...DEFAULTS }
   if (existsSync(file)) {
     try {
-      next = { ...DEFAULTS, ...JSON.parse(readFileSync(file, 'utf8')) }
+      next = migrate({ ...DEFAULTS, ...JSON.parse(readFileSync(file, 'utf8')) })
     } catch {
       // A corrupt config must not brick the app; keep the defaults and let the
       // next save overwrite the bad file.
@@ -64,7 +87,7 @@ export function getConfig(): AppConfig {
   return {
     baseUrl: c.baseUrl,
     hasApiKey: c.apiKeyCipher !== null,
-    workspaces: c.workspaces,
+    projects: c.projects,
     activeWorkspace: c.activeWorkspace,
     model: c.model,
     effort: c.effort,
@@ -77,7 +100,7 @@ export function updateConfig(patch: Partial<Omit<AppConfig, 'hasApiKey'>>): AppC
   persist({
     ...c,
     baseUrl: patch.baseUrl ?? c.baseUrl,
-    workspaces: patch.workspaces ?? c.workspaces,
+    projects: patch.projects ?? c.projects,
     activeWorkspace: patch.activeWorkspace !== undefined ? patch.activeWorkspace : c.activeWorkspace,
     model: patch.model !== undefined ? patch.model : c.model,
     effort: patch.effort ?? c.effort,
@@ -111,11 +134,40 @@ export function readApiKey(): string | null {
   }
 }
 
-/** Records a workspace directory as most-recently-used. */
-export function rememberWorkspace(dir: string): AppConfig {
+/** Adds a project (idempotent by path) and makes it active. */
+export function addProject(path: string): AppConfig {
   const c = load()
-  const workspaces = [dir, ...c.workspaces.filter((w) => w !== dir)].slice(0, 10)
-  persist({ ...c, workspaces, activeWorkspace: dir })
+  const existing = c.projects.find((p) => p.path === path)
+  const projects = existing
+    ? c.projects
+    : [...c.projects, { path, name: projectName(path), collapsed: false }]
+  persist({ ...c, projects, activeWorkspace: path })
+  return getConfig()
+}
+
+export function removeProject(path: string): AppConfig {
+  const c = load()
+  const projects = c.projects.filter((p) => p.path !== path)
+  const activeWorkspace =
+    c.activeWorkspace === path ? (projects[0]?.path ?? null) : c.activeWorkspace
+  persist({ ...c, projects, activeWorkspace })
+  return getConfig()
+}
+
+export function setProjectCollapsed(path: string, collapsed: boolean): AppConfig {
+  const c = load()
+  persist({
+    ...c,
+    projects: c.projects.map((p) => (p.path === path ? { ...p, collapsed } : p)),
+  })
+  return getConfig()
+}
+
+/** Switching the active project is implicit when opening one of its sessions. */
+export function setActiveWorkspace(path: string): AppConfig {
+  const c = load()
+  if (!c.projects.some((p) => p.path === path)) return addProject(path)
+  persist({ ...c, activeWorkspace: path })
   return getConfig()
 }
 

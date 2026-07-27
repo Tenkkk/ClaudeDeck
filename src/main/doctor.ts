@@ -26,9 +26,12 @@ export async function runDoctor(): Promise<DoctorReport> {
       timeout: 15_000,
       windowsHide: true,
     })
+    // `claude --version` 输出形如 "2.1.220 (Claude Code)" —— 只取版本号,
+    // 后缀在「0.1.0 · CLI 2.1.220」这一行里是噪音。
+    const raw = stdout.trim()
     return {
       cliFound: true,
-      cliVersion: stdout.trim(),
+      cliVersion: /^\d+\.\d+\.\d+\S*/.exec(raw)?.[0] ?? raw,
       credentialsConfigured,
     }
   } catch (err) {

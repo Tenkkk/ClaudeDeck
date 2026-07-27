@@ -2,12 +2,15 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppConfig,
   ChatEvent,
+  ContextUsage,
   DoctorReport,
   EffortLevel,
   HistoryMessage,
   ModelOption,
   PermissionMode,
   SessionListItem,
+  UsageInfo,
+  Versions,
 } from '../shared/ipc.js'
 
 /**
@@ -25,22 +28,32 @@ const api = {
       ipcRenderer.invoke('config:update', patch),
     setApiKey: (key: string | null): Promise<AppConfig> => ipcRenderer.invoke('config:setApiKey', key),
   },
-  workspace: {
-    pick: (): Promise<AppConfig> => ipcRenderer.invoke('workspace:pick'),
-    use: (dir: string): Promise<AppConfig> => ipcRenderer.invoke('workspace:use', dir),
+  projects: {
+    add: (): Promise<AppConfig> => ipcRenderer.invoke('projects:add'),
+    activate: (path: string): Promise<AppConfig> => ipcRenderer.invoke('projects:activate', path),
+    remove: (path: string): Promise<AppConfig> => ipcRenderer.invoke('projects:remove', path),
+    collapse: (path: string, collapsed: boolean): Promise<AppConfig> =>
+      ipcRenderer.invoke('projects:collapse', path, collapsed),
   },
   sessions: {
-    list: (): Promise<SessionListItem[]> => ipcRenderer.invoke('sessions:list'),
+    /** Keyed by project path — sessions are scoped by directory. */
+    byProject: (): Promise<Record<string, SessionListItem[]>> =>
+      ipcRenderer.invoke('sessions:byProject'),
     history: (sessionId: string): Promise<HistoryMessage[]> =>
       ipcRenderer.invoke('sessions:history', sessionId),
     rename: (sessionId: string, title: string): Promise<void> =>
       ipcRenderer.invoke('sessions:rename', sessionId, title),
     remove: (sessionId: string): Promise<void> => ipcRenderer.invoke('sessions:delete', sessionId),
   },
+  app: {
+    versions: (): Promise<Versions> => ipcRenderer.invoke('app:versions'),
+  },
   chat: {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),
     send: (text: string): Promise<boolean> => ipcRenderer.invoke('chat:send', text),
     models: (): Promise<ModelOption[]> => ipcRenderer.invoke('chat:models'),
+    usage: (): Promise<UsageInfo | null> => ipcRenderer.invoke('chat:usage'),
+    context: (): Promise<ContextUsage | null> => ipcRenderer.invoke('chat:context'),
     interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),
     setModel: (model: string): Promise<void> => ipcRenderer.invoke('chat:setModel', model),
     setEffort: (effort: EffortLevel): Promise<void> => ipcRenderer.invoke('chat:setEffort', effort),
