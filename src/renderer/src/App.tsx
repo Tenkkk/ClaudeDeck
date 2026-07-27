@@ -232,12 +232,13 @@ export default function App(): React.JSX.Element {
         <div className="toolbar">
           <label>
             模型
+            {/* SDK 的列表里已经包含 "Default (recommended)",不要再自造一个默认项 */}
             <select
-              value={config?.model ?? ''}
+              value={config?.model ?? 'default'}
               onChange={(e) => void changeModel(e.target.value)}
               disabled={models.length === 0}
             >
-              <option value="">默认</option>
+              {models.length === 0 && <option value="default">加载中…</option>}
               {models.map((m) => (
                 <option key={m.value} value={m.value}>
                   {m.displayName}

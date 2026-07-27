@@ -51,6 +51,18 @@ npm run dev
 > 镜像**没有**写进仓库的 `.npmrc`:CI 构建的是用户会下载安装的产物,
 > 那条链路应当只从官方源取二进制。
 
+## 冒烟测试
+
+验证三个功能的核心链路(会产生少量真实 API 调用):
+
+```bash
+node scripts/smoke.mjs
+```
+
+它不走 UI,直接按主进程的方式调用 SDK —— 风险都在这一层,渲染层只是把结果画出来。
+覆盖:流式聊天、会话中途 `setModel`、`listSessions` / `getSessionMessages`、
+以及 `resume` 后不分叉出新 session id。
+
 ## 打包安装程序
 
 ```bash
