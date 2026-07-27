@@ -1,0 +1,46 @@
+# ClaudeDeck — 给 AI 协作者的项目说明
+
+## 这是什么
+
+一个 Electron 桌面应用,通过 `@anthropic-ai/claude-agent-sdk` 把 Claude Code 封装成
+图形界面聊天软件。仅支持 Windows。
+
+## 硬性约束
+
+1. **SDK 只能在主进程用。** 它会拉起 `claude` 可执行文件,是 Node 侧的事。
+   渲染层永远通过 `preload` 暴露的白名单 API 访问,`contextIsolation` 保持开启。
+2. **SDK 必须保持 external。** `electron.vite.config.ts` 里的 `externalizeDepsPlugin`
+   不能去掉——打包进 bundle 会破坏它对 CLI 可执行文件的路径解析。
+3. **始终使用流式输入模式**(`prompt` 传 AsyncIterable,不传 string)。
+   `Query.setModel` / `setPermissionMode` / `interrupt` 和 `canUseTool` 回调
+   只在这个模式下可用。
+4. **用户输入必须打 `origin: { kind: 'human' }`。** 缺了它,SDK 在严格的
+   `isHuman()` 信任门禁处会 fail closed。
+5. **`resume` 时保持 `forkSession: false`。** 否则会分叉出新的 session id,
+   侧边栏里用户点开的那一条就不再是继续增长的那一条。
+6. **不要给会话做本地副本。** SDK 的 session store 是单一事实来源。
+   本地只存偏好和加密后的凭据。
+7. **API Key 只走 `safeStorage`。** 任何时候都不要把明文 key 写进文件或日志,
+   也不要经 IPC 传给渲染层。
+
+## 选项切换的代价不对称
+
+| 选项 | 方式 | 是否打断 |
+|---|---|---|
+| 模型 | `Query.setModel()` | 否 |
+| 权限档 | `Query.setPermissionMode()` | 否 |
+| Effort | 无 setter,需重开 query 并 `resume` | 会短暂重连 |
+
+## 样式
+
+`src/renderer/src/styles.css` 里的一切都是**占位**。真正的视觉来自 Organic
+设计系统,经 Claude Design 出稿后整体替换。改样式前先看 `docs/DESIGN-SPEC.md`。
+
+## 提交前
+
+```bash
+npm run typecheck
+npm run build
+```
+
+两条都必须干净。
