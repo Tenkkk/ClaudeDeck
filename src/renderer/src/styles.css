@@ -1,0 +1,254 @@
+/*
+ * Placeholder styling only.
+ *
+ * The real visual layer comes from the Organic design system via Claude Design.
+ * Everything here is deliberately neutral so that swapping in the design tokens
+ * is a replacement, not an argument with existing styles.
+ */
+
+:root {
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --border: #e6e4e0;
+  --text: #1f1e1c;
+  --muted: #78746d;
+  --accent: #c96442;
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: inherit;
+}
+
+.center {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  max-width: 560px;
+  width: 100%;
+  display: grid;
+  gap: 14px;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 264px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar header,
+.sidebar footer {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar footer {
+  border-bottom: none;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.session-item {
+  text-align: left;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 9px 10px;
+  display: grid;
+  gap: 3px;
+}
+
+.session-item:hover {
+  background: var(--bg);
+}
+
+.session-item[aria-current='true'] {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.session-item .title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item .meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.main {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.toolbar label {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.effort {
+  display: flex;
+  gap: 2px;
+}
+
+.effort button {
+  border-radius: 0;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.effort button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.effort button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.effort button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.transcript {
+  overflow-y: auto;
+  padding: 22px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.msg {
+  display: grid;
+  gap: 5px;
+  max-width: 780px;
+}
+
+.msg .who {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.msg .body {
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+
+.msg.user .body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 13px;
+}
+
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.composer textarea {
+  flex: 1;
+  resize: none;
+  min-height: 46px;
+  max-height: 180px;
+}
+
+.permission {
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  background: var(--surface);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.error {
+  color: #b4432a;
+}

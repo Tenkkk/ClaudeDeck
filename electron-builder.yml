@@ -1,0 +1,35 @@
+appId: com.tenk.claudedeck
+productName: ClaudeDeck
+copyright: Copyright © 2026 Tenk
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - out/**/*
+  - package.json
+
+# @anthropic-ai/claude-agent-sdk is externalized by electron-vite, so it must be
+# shipped as a real node_modules entry rather than bundled into the asar.
+asarUnpack:
+  - node_modules/@anthropic-ai/claude-agent-sdk/**/*
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ClaudeDeck
+
+publish:
+  provider: github
+  owner: Tenkkk
+  repo: ClaudeDeck
+  releaseType: release
