@@ -1,44 +1,124 @@
+<div align="center">
+
+<img src="build/icon.svg" width="96" alt="ClaudeDeck" />
+
 # ClaudeDeck
 
-把命令行工具 **Claude Code** 封装成图形界面聊天软件的 Windows 桌面应用。
+**把 Claude Code 装进窗口的桌面客户端。**
+
+Claude Desktop 能聊天、能接 MCP,但它不会动你的代码。
+终端里的 Claude Code 什么都能干,可界面就是一块黑屏 ——
+没有会话列表,没有可点的权限卡,看不见上下文被谁占满了。
+ClaudeDeck 补的是这中间那块空缺。
+
+[![CI](https://github.com/Tenkkk/ClaudeDeck/actions/workflows/ci.yml/badge.svg)](https://github.com/Tenkkk/ClaudeDeck/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Tenkkk/ClaudeDeck)](https://github.com/Tenkkk/ClaudeDeck/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+</div>
 
 > **非官方项目。** ClaudeDeck 由个人开发,与 Anthropic 无隶属、赞助或背书关系。
 > Claude 与 Claude Code 是 Anthropic 的商标,此处仅作描述性使用。
 
----
-
-## 功能
-
-| | |
-|---|---|
-| **聊天** | 在窗口里直接和 Claude Code 对话,回复逐字流式呈现 |
-| **切换模型** | 模型列表在运行时向 SDK 查询,会话进行中可随时切换,历史不中断 |
-| **会话列表** | 左侧按「项目 → 会话」两层列出多个工作目录下的历史会话,点击即可回到任意一次对话(跨项目会隐式切换工作目录) |
-
-此外还有:Effort 五档调节、四档权限模式、工具调用的逐次批准、斜杠命令面板、
-会话重命名 / 打标签 / 分支 / 删除、额度与上下文占用,
-以及一份可复现的版式验收(`npm run measure`)。
+![主界面](docs/images/main-light.png)
 
 ---
 
-## 环境要求
+## 它和 Claude Desktop 的差别
 
-- Windows 10 / 11
-- Node.js ≥ 20
-- **Claude Code** —— 不用另外装。Agent SDK 把版本配套的 `claude` 可执行文件
-  作为可选依赖一起装了,安装包也把它一并带上(这也是安装包 150 MB 出头的原因)。
-  版本必须与 SDK 对齐,所以宁可随包分发,也不去赌本机全局装的是哪个版本。
-  只有在这份配套文件缺失时,才回退去找 PATH 上的 `claude`,并在引导页提供一键安装。
+两者不是同一类东西。Claude Desktop 是**聊天**客户端;ClaudeDeck 是把
+**Claude Code 这个会读写文件、会跑命令的 Agent** 搬进图形界面。
+
+| | Claude Desktop | 终端里的 Claude Code | ClaudeDeck |
+|---|---|---|---|
+| 直接改你项目里的文件 | ✗ | ✓ | ✓ |
+| 会话列表、点回任意一次对话 | ✓ | 只能 `--resume` 猜 | ✓ 按项目分组 |
+| 工具调用可视 | — | 纯文本刷屏 | ✓ 分类工具行、diff 带颜色 |
+| 权限逐次批准 | — | 键盘选 | ✓ 行内卡片,可记住 |
+| 上下文被谁占满了 | ✗ | `/context` 一次性 | ✓ 常驻环形入口 + 分类明细 |
+| MCP 服务状态与启停 | ✓ | `/mcp` | ✓ 面板,可展开工具清单 |
+| 多个项目并列 | — | 一个终端一个目录 | ✓ 侧栏两层 |
+| 深色主题 | ✓ | 跟终端 | ✓ |
+
+如果你已经在用终端里的 Claude Code,ClaudeDeck 不改变它的行为 ——
+它用的就是同一个 Claude Code、同一份 `~/.claude` 会话记录。
+换个界面而已,随时可以切回终端。
+
+---
+
+## 主要能力
+
+### 对话与工具调用一目了然
+
+正文按 Markdown 渲染,代码块单独成块、带语言标签和复制。
+Claude 的思考过程默认折叠,想看再展开。
+等待时给出已用时长与本轮输出的 token 数,不会只剩一屏空白。
+
+![深色主题](docs/images/main-dark.png)
+
+### 项目文件就在手边
+
+每个项目下都有「文件」入口,中栏展开整个项目树。
+`.claude/` 只是树里的一个普通文件夹 —— 配置随手就能改,
+JSON 写坏了在**保存前**就被拦住并指出行号。
+
+> 浏览是整个项目,**可写的只有 `.claude/` 和项目根的 `CLAUDE.md`**。
+> 一个聊天客户端不该顺带成为可修改任意源码的编辑器。
+
+![文件树](docs/images/files.png)
+
+### MCP 服务看得见、点得动
+
+`/mcp` 不是一段文字回执,是一块面板:按来源分组,标出连接状态与工具数,
+展开能看每个工具(带只读 / 破坏性标注),连不上的可以直接重连或停用。
+
+![MCP 面板](docs/images/mcp.png)
+
+### 接管情况写在明处
+
+设置里直接告诉你:这个应用在用**哪一份** Claude Code、版本多少、
+可执行文件在哪。版本对不上时,排查从这里开始。
+
+API 端点与密钥也在这里填。密钥经 Electron `safeStorage`
+(Windows 上是 DPAPI)加密后落盘,明文不出主进程 ——
+所以界面读不回已保存的值,只能重填或清除。
+
+![系统设置](docs/images/settings.png)
+
+### 跨项目搜索会话
+
+![搜索](docs/images/search.png)
+
+### 还有
+
+- **切换模型**:列表在运行时向 SDK 查询,带上官方的说明文字;会话进行中可随时切换,历史不中断
+- **Effort 五档**:可拖的停靠滑块;模型不支持努力程度时(如 Haiku)直接禁用
+- **四档权限**:询问 / 接受编辑 / 计划 / 完全放行,行内卡片批准,可「本次会话内不再问」
+- **分支与文件回退**:从任意一条消息重答会新建分支,可同时把文件回退到那一刻
+- **子进程面板**:后台任务可展开、单独停止,也能把当前任务转入后台
+- **斜杠命令面板**:命令由 SDK 运行时提供,按「内置 / 项目命令 / Skill」分组,按相关度排序
+- **会话管理**:重命名、打标签、分支、在资源管理器中打开、删除
+
+---
+
+## 安装
+
+到 [Releases](https://github.com/Tenkkk/ClaudeDeck/releases/latest) 下载
+`ClaudeDeck-<版本>-win-x64.exe`,双击安装。目前只支持 Windows 10 / 11。
+
+**不用单独装 Claude Code。** Agent SDK 把版本配套的 `claude` 可执行文件作为
+可选依赖一起装了,安装包也把它一并带上(这也是安装包 150 MB 出头的原因)。
+版本必须与 SDK 对齐,所以宁可随包分发,也不去赌本机全局装的是哪个版本。
+只有在这份配套文件缺失时,才回退去找 PATH 上的 `claude`。
 
 登录方式二选一:
 
-1. 已在终端里 `claude` 登录过 —— 直接沿用,无需配置
-2. 使用 API Key / 中转端点 —— 在首次配置页填写 `ANTHROPIC_BASE_URL` 和 API Key,
-   Key 通过 Electron `safeStorage`(Windows DPAPI)加密后落盘,不存明文
+1. **已在终端里 `claude` 登录过** —— 直接沿用,无需配置
+2. **API Key / 中转端点** —— 在首次配置页或设置里填 `ANTHROPIC_BASE_URL` 和 API Key
 
 ---
 
-## 本地运行
+## 从源码运行
 
 ```bash
 npm install
@@ -56,80 +136,42 @@ npm run dev
 > 镜像**没有**写进仓库的 `.npmrc`:CI 构建的是用户会下载安装的产物,
 > 那条链路应当只从官方源取二进制。
 
+### 打包与发布
+
+```bash
+npm run icon    # 由 build/icon.svg 生成图标(改了图标才需要)
+npm run dist    # 产物在 release/,NSIS 安装包
+```
+
+推一个 `v*` 标签即触发 CI 构建并创建 GitHub Release。
+
+---
+
 ## 测试
 
 五层。前两层不产生 API 调用,后三层会。
 
-**单元测试** —— 纯函数,不花钱,已进 CI:
+| 命令 | 验什么 | API |
+|---|---|---|
+| `npm run unit` | 纯函数:路径截断、工具行归一化、Markdown 解析、命令排序、路径收敛 | 否 |
+| `npm run contrast` | 两套主题的对比度下限 | 否 |
+| `npm run measure` | 按设计终稿逐条量尺寸、三档宽度、配色规则 | 否 |
+| `npm run smoke` | SDK 那一层:流式聊天、`setModel`、会话读写 | 是 |
+| `npm run e2e` | Playwright 驱动真实窗口,验「点了按钮之后事情有没有真的发生」 | 是 |
+| `npm run packaged` | 打包产物本身能不能起、能不能收到回复 | 是 |
 
-```bash
-npm run unit
-```
-
-覆盖路径截断规则、相对时间、以及四种工具行的归一化(含畸形输入的降级)。
-
-**版式验收** —— 按设计终稿 §08 逐条量尺寸与三档宽度:
-
-```bash
-npm run measure
-```
-
-**冒烟测试** —— 验 SDK 那一层,不走 UI:
-
-```bash
-npm run smoke
-```
-
-覆盖流式聊天、会话中途 `setModel`、`listSessions` / `getSessionMessages`,
-以及 `resume` 后不分叉出新 session id。
-
-**端到端测试** —— 用 Playwright 驱动真实 Electron 窗口:
-
-```bash
-npm run e2e
-```
-
-覆盖 contextBridge 桥接、旧版配置迁移、发消息后回复出现在界面、下拉切换模型后
-历史不丢、新会话进入侧边栏、点回旧会话载入其历史、Bash 工具行与其输出展开。
-使用独立的 `--user-data-dir`,不会读写你真实的 ClaudeDeck 配置。
-
-跑一次全量十几分钟、几十次真实 API 调用。只改了一节的话不必从头跑:
+`e2e` 跑一次全量十几分钟。只改了一节的话不必从头跑:
 
 ```bash
 node scripts/e2e.mjs --only 10,11
 ```
 
-第 0 节(引导与桥接)永远跑,它是别的节的地基。各节的变量互不引用,但**状态是
-累积的** —— 第 3 节要有历史会话、第 8 节要有会话可删,单跑它们可能因为前置状态
-不在而失败,那是预期内的。
+第 0 节(引导与桥接)永远跑。各节变量互不引用,但**状态是累积的** ——
+单跑靠后的节可能因为前置状态不在而失败,那是预期内的。
 
-**打包版冒烟** —— 驱动 `release/win-unpacked/` 里那个真正的 exe:
-
-```bash
-npm run dist && npm run packaged
-```
-
-上面四层跑的都是开发构建,`node_modules` 摊在磁盘上。打包后它被压进
-`app.asar`,**asar 里的可执行文件是 spawn 不起来的** —— 这一整类
-「dev 好好的、装完打不开」的毛病,前四层一条都照不到。这一层专门堵它:
-起窗口、发一条消息、确认真有回复、确认没有报错条。
-
-## 打包安装程序
-
-```bash
-npm run dist
-```
-
-产物在 `release/`,为 NSIS 安装包。打完包请顺手跑一次 `npm run packaged` ——
-交出去之前,至少让那个 exe 自己说过一句话。
-
-## 发布
-
-推一个 `v*` 标签即触发 CI 构建并创建 GitHub Release:
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
+**为什么单独有 `packaged` 这一层:** 前几层跑的都是开发构建,`node_modules`
+摊在磁盘上。打包后它被压进 `app.asar`,而 asar 里的可执行文件是 spawn 不起来的 ——
+「开发正常、安装后打不开」这一整类问题,前几层一条都照不到。
 
 ---
 
@@ -152,15 +194,24 @@ git tag v0.1.0 && git push origin v0.1.0
 └──────────────────┬──────────────────────────────┘
                    │ SDK 拉起
 ┌──────────────────┴──────────────────────────────┐
-│ Claude Code CLI                                 │
+│ Claude Code                                     │
 └─────────────────────────────────────────────────┘
 ```
 
-**会话不做本地副本。** SDK 自带 `listSessions` / `getSessionMessages` /
-`renameSession` / `deleteSession`,其 session store 即单一事实来源,
-应用只保存自己的偏好:项目清单(路径/显示名/折叠状态)、模型、Effort、权限档、凭据。
+几条贯穿全局的取舍:
 
-## 文件结构
+- **会话不做本地副本。** SDK 自带 `listSessions` / `getSessionMessages` /
+  `renameSession` / `deleteSession`,其 session store 即单一事实来源。
+  应用只保存自己的偏好:项目清单、模型、Effort、权限档、凭据。
+  所以你在终端里开的会话,这里看得到;这里开的,终端也认。
+- **始终使用流式输入模式。** `setModel` / `setPermissionMode` / `interrupt` /
+  `canUseTool` 这些控制方法只在流式模式下受支持。
+- **渲染层的输入一律不可信。** 文件路径在主进程里做硬性收敛,越界直接拒绝。
+- **拿不到的数据就不画。** 额度接口在 API Key / Bedrock / Vertex 会话下会
+  报 `available: false`,那一整块就消失 —— 不留空槽、不写「未知」、
+  不画一个可能不准的百分比。
+
+### 文件结构
 
 ```
 src/
@@ -168,43 +219,48 @@ src/
     index.ts              入口与全部 IPC 处理
     chat.ts               ChatSession —— 流式输入模式下的一次对话
     config.ts             偏好与 safeStorage 凭据(含旧结构迁移)
-    doctor.ts             Claude Code CLI 检测与安装
-    binary.ts             定位随包分发的 claude 可执行文件(打包后不能走 asar)
+    doctor.ts             Claude Code 检测与安装
+    binary.ts             定位随包分发的可执行文件(打包后不能走 asar)
+    claudedir.ts          文件树与 .claude 读写,路径收敛在这里
     tools.ts              把 SDK 的工具调用归一化成界面能画的行
+    dialogs.ts            AskUserQuestion / ExitPlanMode 的入参归一化
+    history.ts            重建历史时还原被展开的斜杠命令
   preload/              contextBridge 白名单 API
   renderer/src/
     App.tsx               四屏路由与主界面
     screens/              加载 / 首次配置 / 选择项目
-    components/           侧栏、消息、工具行
-    lib/                  路径截断、相对时间等纯函数
-    styles.css            设计 token(第 01 节)
+    components/           标题栏、侧栏、消息、工具行、各类面板
+    lib/                  Markdown 解析、命令排序、列宽夹逼等纯函数
+    styles.css            设计 token
     layout.css            骨架样式,只引用 token
-    fonts.css + fonts/    本地打包的字体与许可证
   shared/               主进程与渲染层共用的类型
-scripts/                unit / contrast / measure / smoke / e2e / packaged
+scripts/                unit / contrast / measure / smoke / e2e / packaged / icon
+build/                  图标源与生成物
 docs/
-  DESIGN-SPEC.md          界面规格(给 Claude Design 的输入)
-  IMPLEMENTATION-BRIEF.md 实施说明(设计终稿的工程对照)
+  DESIGN-SPEC.md          界面规格
+  IMPLEMENTATION-BRIEF.md 实施说明
 ```
 
-## 现状与路线图
+---
 
-项目仍在持续迭代,当前可用的能力见 [CHANGELOG](CHANGELOG.md)。
+## 路线图
 
-**接下来打算做的:**
+当前可用的能力见 [CHANGELOG](CHANGELOG.md)。接下来打算做的:
 
-- 跨会话搜索
-- 应用图标 —— 目前还是 Electron 的默认图标
+- 会话正文的全文搜索(目前只搜标题与首句)
+- 文件树里的编辑范围可配置
+- macOS 支持
 
-**已经打通的(此前一度以为做不到):**「Claude 反问你」与计划卡都能正常触发和作答,
-并有端到端测试守着。此前我把它们接在 `onUserDialog` 上,那条通道在 SDK 会话里
-不会响;实际走的是 `canUseTool`。原委记在 [CLAUDE.md](CLAUDE.md)。
+**已知边界:** 额度接口是实验性的,API Key / Bedrock / Vertex 会话拿不到;
+`/help` 这类命令在 SDK 环境下由 Claude Code 自己回「不可用」。
+
+---
 
 ## 文档
 
 - [界面规格](docs/DESIGN-SPEC.md) —— 界面的结构、状态与文案
 - [实施说明](docs/IMPLEMENTATION-BRIEF.md) —— 设计与工程的对照、接口清单与五个坑
-- [CLAUDE.md](CLAUDE.md) —— 给 AI 协作者的约束与已知边界
+- [CLAUDE.md](CLAUDE.md) —— 给 AI 协作者的约束、SDK 能力清单与踩过的坑
 - [更新日志](CHANGELOG.md)
 
 ## 参与
@@ -215,7 +271,7 @@ docs/
 npm run typecheck && npm run unit && npm run build
 ```
 
-`smoke` 与 `e2e` 会产生真实 API 调用,不进 CI,按需本地跑。
+`smoke` / `e2e` / `packaged` 会产生真实 API 调用,不进 CI,按需本地跑。
 
 ## License
 

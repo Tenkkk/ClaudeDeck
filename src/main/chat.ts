@@ -123,11 +123,26 @@ export class ChatSession {
   >()
 
   sessionId: string | null = null
+  /**
+   * 这个会话在磁盘上有没有东西。
+   *
+   * `system/init` 一上来就给了 session_id,但那时会话文件还没写 ——
+   * 拿它去 resume,CLI 会回「No conversation found with session ID」。
+   * 触发路径很日常:新建会话、一个字没发就去拖 Effort 滑块。
+   */
+  private persisted = false
+
+  /** 能拿去 resume 的 id;没存过东西就没有 */
+  get resumable(): string | null {
+    return this.persisted ? this.sessionId : null
+  }
 
   constructor(private readonly emit: (event: ChatEvent) => void) {}
 
   start(opts: StartOptions): void {
     this.sessionId = opts.resume ?? null
+    // 从已有会话续上来的,磁盘上当然有东西
+    this.persisted = Boolean(opts.resume)
 
     this.q = query({
       prompt: this.inbox,
@@ -382,6 +397,8 @@ export class ChatSession {
   send(text: string): void {
     // 计数按「轮」清零 —— 状态行显示的是这一轮的产出,不是整个会话的累计
     this.outputTokens = 0
+    // 发出去就会落盘,从这一刻起它才 resume 得回来
+    this.persisted = true
     this.inbox.push({
       type: 'user',
       message: { role: 'user', content: text },

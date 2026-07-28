@@ -137,7 +137,7 @@ try {
       add: cs('.project-line .project-add'),
       // 新建会话移到品牌行右端(原先是整宽一行)。位置变了,规则没变:
       // 陶土只出现在当前项、主按钮、等待决定的卡片,新建会话不在其中。
-      newSession: cs('.sidebar-brand .icon-btn'),
+      newSession: cs('.sidebar-brand .new-session'),
       hasBrandDot: !!document.querySelector('.sidebar-brand .brand-dot'),
     }
   })

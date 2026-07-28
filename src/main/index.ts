@@ -429,7 +429,8 @@ function registerIpc(): void {
   // Resuming with forkSession:false keeps the same session id and history.
   ipcMain.handle('chat:setEffort', (_e, effort: EffortLevel) => {
     updateConfig({ effort })
-    const resume = active?.sessionId ?? undefined
+    // 空会话没什么可 resume 的 —— 拿它的 id 去续,CLI 会报「没有这个会话」
+    const resume = active?.resumable ?? undefined
     if (active) openSession(resume)
   })
 }

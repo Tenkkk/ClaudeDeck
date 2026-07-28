@@ -353,9 +353,12 @@ export default function App(): React.JSX.Element {
   //
   // 切项目**不再**关掉中栏:文件树现在显式绑在某个项目上,头部也写着是哪个 ——
   // 一边看 A 的文件一边跟 B 聊是合理的。要收拾的只有一种情况:那个项目被移除了。
-  const known = (config?.projects ?? []).map((p) => p.path).join(' ')
+  //
+  // 依赖项要是个字符串,不能直接放数组 —— 数组每次渲染都是新引用,effect 会
+  // 每次都跑。用换行连接:路径里不会出现换行,不会误切。
+  const known = (config?.projects ?? []).map((p) => p.path).join('\n')
   useEffect(() => {
-    const paths = new Set(known.split(' ').filter(Boolean))
+    const paths = new Set(known.split('\n').filter(Boolean))
     setFilesProject((cur) => (cur && !paths.has(cur) ? null : cur))
     setOpenFile((cur) => {
       if (!cur || paths.has(cur.project)) return cur
@@ -458,7 +461,13 @@ export default function App(): React.JSX.Element {
    */
   const bare = (body: React.JSX.Element): React.JSX.Element => (
     <div className="app">
-      <TitleBar sidebarOpen={false} onToggleSidebar={() => {}} onSearch={() => {}} bare />
+      <TitleBar
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        onSearch={() => {}}
+        onSettings={() => {}}
+        bare
+      />
       {body}
     </div>
   )
@@ -554,11 +563,21 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <div className="app">
+    // 宽度变量放在最外层:标题栏要按侧栏宽度切换底色,它在 shell 之外
+    <div
+      className={`app${sidebarOpen ? '' : ' no-sidebar'}`}
+      style={
+        {
+          '--w-sidebar': `${widths.sidebar}px`,
+          '--w-midcol': `${widths.midcol}px`,
+        } as React.CSSProperties
+      }
+    >
       <TitleBar
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         onSearch={() => setSearchOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
 
       {searchOpen && (
@@ -577,10 +596,7 @@ export default function App(): React.JSX.Element {
         <SettingsDialog
           config={config}
           doctor={doctor}
-          versions={versions}
-          account={account}
           onClose={() => setSettingsOpen(false)}
-          onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
           onSaveCredentials={async (url, key) => {
             const next = await window.api.config.update({ baseUrl: url })
             setConfig(next)
@@ -590,17 +606,7 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      <div
-        className={`shell${midOpen ? ' with-mid' : ''}${sidebarOpen ? '' : ' no-sidebar'}`}
-        // 覆盖 styles.css 里的默认值。写在这一层而不是每栏各写各的,
-        // 是因为中栏关着时布局也要跟着变,统一由 grid 的模板表达。
-        style={
-          {
-            '--w-sidebar': `${widths.sidebar}px`,
-            '--w-midcol': `${widths.midcol}px`,
-          } as React.CSSProperties
-        }
-      >
+      <div className={`shell${midOpen ? ' with-mid' : ''}${sidebarOpen ? '' : ' no-sidebar'}`}>
         {sidebarOpen && (
       <Sidebar
         projects={config?.projects ?? []}
@@ -637,7 +643,8 @@ export default function App(): React.JSX.Element {
           setOpenFile(null)
           setFilesProject((cur) => (cur === path ? null : path))
         }}
-        onOpenSettings={() => setSettingsOpen(true)}
+        theme={config?.theme ?? 'system'}
+        onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
       />
         )}
 

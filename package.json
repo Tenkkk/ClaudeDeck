@@ -1,6 +1,6 @@
 {
   "name": "claudedeck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ClaudeDeck — 把 Claude Code 封装成图形界面聊天软件的 Windows 桌面应用",
   "author": "Tenk",
   "license": "MIT",
@@ -19,7 +19,9 @@
     "unit": "node scripts/unit.mjs",
     "measure": "electron-vite build && node scripts/measure.mjs",
     "contrast": "node scripts/contrast.mjs",
-    "packaged": "node scripts/packaged.mjs"
+    "packaged": "node scripts/packaged.mjs",
+    "icon": "node scripts/make-icon.mjs",
+    "shots": "node scripts/shots-for-readme.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.220"

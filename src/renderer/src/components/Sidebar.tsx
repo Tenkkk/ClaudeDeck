@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CaretIcon, CheckIcon, FolderIcon, GearIcon, PlusIcon } from './Icons.js'
+import { AppearanceIcon, CaretIcon, CheckIcon, FolderIcon, PlusIcon } from './Icons.js'
 import Popover from './Popover.js'
 import { relativeTime } from '../lib/path.js'
 import {
@@ -37,7 +37,8 @@ export default function Sidebar({
   onExpandAll,
   onAddProject,
   onManageProjects,
-  onOpenSettings,
+  theme,
+  onTheme,
   filesProject,
   onOpenFiles,
 }: {
@@ -57,8 +58,8 @@ export default function Sidebar({
   onExpandAll: (path: string) => void
   onAddProject: () => void
   onManageProjects: () => void
-  /** 主题、凭据、接管情况都进了设置对话框,这里只留一个入口 */
-  onOpenSettings: () => void
+  theme: ThemePref
+  onTheme: (t: ThemePref) => void
   /** 中栏正在浏览哪个项目的文件,没有就是 null */
   filesProject: string | null
   onOpenFiles: (projectPath: string) => void
@@ -75,8 +76,11 @@ export default function Sidebar({
       */}
       <div className="sidebar-brand">
         <span className="brand">ClaudeDeck</span>
-        <button className="ghost icon-btn" title="新建会话" onClick={onNewSession}>
-          <PlusIcon size={14} />
+        {/* 光一个 ＋ 不说明自己是什么,尤其当前已经在空会话上、点了没有可见变化时。
+            带上字就没有这个问题。 */}
+        <button className="new-session" title="新建会话" onClick={onNewSession}>
+          新建会话
+          <PlusIcon size={12} />
         </button>
       </div>
 
@@ -228,6 +232,7 @@ export default function Sidebar({
           换成齿轮 —— 齿轮一眼就是「设置」,而一串版本号不是,原先那行整条可点
           却没有任何东西在说它可点。花费挪进浮窗,信息不丢。
         */}
+        {/* 这颗管的是外观与账号 —— 「怎么连上 Claude Code」在标题栏的齿轮里 */}
         <div className="version-slot">
           <div className="version-row">
             <span>
@@ -237,13 +242,52 @@ export default function Sidebar({
             </span>
             <button
               className="icon-btn settings-btn"
-              aria-label="设置"
-              title="设置"
-              onClick={onOpenSettings}
+              aria-expanded={themeOpen}
+              aria-label="外观与账号"
+              title="外观与账号"
+              onClick={() => setThemeOpen((v) => !v)}
             >
-              <GearIcon size={14} />
+              <AppearanceIcon size={14} />
             </button>
           </div>
+
+          <Popover open={themeOpen} onClose={() => setThemeOpen(false)} align="right" width={210}>
+            <div className="pop-group">主题</div>
+            {THEME_OPTIONS.map((t) => (
+              <button
+                key={t.value}
+                className={`pop-row${t.value === theme ? ' current' : ''}`}
+                onClick={() => {
+                  onTheme(t.value)
+                  setThemeOpen(false)
+                }}
+              >
+                <span className="pop-check">{t.value === theme ? <CheckIcon size={9} /> : ''}</span>
+                <span className="pop-body">
+                  <span className="pop-title">{t.label}</span>
+                </span>
+              </button>
+            ))}
+
+            {/* 三方 provider 下多数字段是空的,那就少画几行,不写「未知」 */}
+            {account && (account.email || account.organization || account.subscriptionType) && (
+              <>
+                <div className="ctx-sep" />
+                <div className="pop-group">账号</div>
+                {account.email && <div className="about-row">{account.email}</div>}
+                {account.organization && <div className="about-row">{account.organization}</div>}
+                {account.subscriptionType && (
+                  <div className="about-row">{account.subscriptionType}</div>
+                )}
+              </>
+            )}
+
+            <div className="ctx-sep" />
+            <div className="about-row">
+              ClaudeDeck {versions?.app ?? '—'}
+              {versions?.cli ? ` · Claude Code ${versions.cli}` : ''}
+            </div>
+          </Popover>
         </div>
       </div>
     </aside>

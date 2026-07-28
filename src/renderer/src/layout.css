@@ -379,13 +379,15 @@ kbd,
   overflow: hidden;
 }
 
+
 .titlebar {
   display: flex;
   align-items: center;
   gap: var(--s4);
   padding-left: var(--s8);
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  /* 不画分隔线,整条统一取侧栏的底色 —— 分两段的话中间会有一道竖着的
+     色阶,比一条横线更碍眼。两套主题都走同一个变量。 */
+  background: var(--surface);
   /* 整条可拖,按钮各自 no-drag —— 不标的话按钮会被拖拽区吃掉点击 */
   -webkit-app-region: drag;
 }
@@ -410,10 +412,14 @@ kbd,
   justify-content: center;
   width: 28px;
   height: 26px;
+  /* 必须清掉全局 button 的 padding(8px 16px)。不清的话 28px 宽减去左右
+     各 16px,内容宽度成负数,里面的图标被压成 0 宽 —— 按钮在、颜色对、
+     就是什么也看不见。 */
+  padding: 0;
   border: none;
   background: transparent;
   border-radius: var(--r-control);
-  color: var(--muted);
+  color: var(--ink-2);
 }
 
 .win-btn:hover {
@@ -432,6 +438,7 @@ kbd,
   justify-content: center;
   width: 46px;
   height: var(--h-titlebar);
+  padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -703,7 +710,12 @@ kbd,
 
 .sidebar {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  /*
+   * 三行:品牌行 / 会话列表(吃掉剩余高度) / 底部。
+   * 「新建会话」那一整行去掉之后这里还写着四行,1fr 就落到了底部块上 ——
+   * 底部被撑成一个大空盒,额度贴在它顶上、版本行掉到窗口最下面。
+   */
+  grid-template-rows: auto 1fr auto;
   min-height: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -716,8 +728,25 @@ kbd,
   justify-content: space-between;
 }
 
-.sidebar-new {
-  padding: 0 var(--s8) var(--s8);
+/* 品牌行右端的新建会话:一行安静的小字,不是主按钮 ——
+   陶土只出现在当前项、主按钮、等待决定的卡片 */
+.new-session {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--r-control);
+  padding: var(--s2) var(--s6);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.new-session:hover {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--ink-2);
 }
 
 /* 一行安静的入口,不是主按钮 */

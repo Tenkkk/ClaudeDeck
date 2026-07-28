@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
-import { CheckIcon } from './Icons.js'
-import { THEME_OPTIONS } from '../../../shared/ipc.js'
-import type { AccountInfo, AppConfig, DoctorReport, ThemePref, Versions } from '../../../shared/ipc.js'
+import type { AppConfig, DoctorReport } from '../../../shared/ipc.js'
 
 /**
  * 系统设置。
  *
- * 原来只有齿轮上挂的一个小浮窗(主题 + 版本),而「这个应用到底在用哪一份
- * Claude Code」「中转端点填的是什么」这些既看不到也改不了 —— 出问题时
- * 只能去翻配置文件。
+ * 只管一件事:**这个应用怎么连上 Claude Code**。接管的是哪一份可执行文件、
+ * 走哪个端点、用哪把密钥。这些原本既看不到也改不了,出问题只能去翻配置文件。
+ *
+ * 主题和账号不在这儿 —— 那是「看着舒不舒服」和「我是谁」,跟着侧栏底部
+ * 那颗按钮走。两件事混在一屏里,找哪个都要先扫一遍。
  *
  * ## API Key 不回读
  *
@@ -19,18 +19,12 @@ import type { AccountInfo, AppConfig, DoctorReport, ThemePref, Versions } from '
 export default function SettingsDialog({
   config,
   doctor,
-  versions,
-  account,
   onClose,
-  onTheme,
   onSaveCredentials,
 }: {
   config: AppConfig | null
   doctor: DoctorReport | null
-  versions: Versions | null
-  account: AccountInfo | null
   onClose: () => void
-  onTheme: (t: ThemePref) => void
   onSaveCredentials: (baseUrl: string, apiKey: string | null) => Promise<void>
 }): React.JSX.Element {
   const [baseUrl, setBaseUrl] = useState(config?.baseUrl ?? '')
@@ -148,52 +142,8 @@ export default function SettingsDialog({
             {saved && <span className="hint">已保存,下次新建会话生效</span>}
           </div>
 
-          {/* ---- 主题 ---- */}
-          <div className="ctx-sep" />
-          <div className="pop-group">主题</div>
-          {THEME_OPTIONS.map((t) => (
-            <button
-              key={t.value}
-              className={`pop-row${t.value === config?.theme ? ' current' : ''}`}
-              onClick={() => onTheme(t.value)}
-            >
-              <span className="pop-check">
-                {t.value === config?.theme ? <CheckIcon size={9} /> : ''}
-              </span>
-              <span className="pop-body">
-                <span className="pop-title">{t.label}</span>
-              </span>
-            </button>
-          ))}
-
-          {/* ---- 账号与版本 ---- */}
-          <div className="ctx-sep" />
-          <div className="pop-group">关于</div>
-          {account?.email && (
-            <div className="set-row">
-              <span className="set-label">账号</span>
-              <span className="set-value">{account.email}</span>
-            </div>
-          )}
-          {account?.organization && (
-            <div className="set-row">
-              <span className="set-label">组织</span>
-              <span className="set-value">{account.organization}</span>
-            </div>
-          )}
-          {account?.subscriptionType && (
-            <div className="set-row">
-              <span className="set-label">订阅</span>
-              <span className="set-value">{account.subscriptionType}</span>
-            </div>
-          )}
-          <div className="set-row">
-            <span className="set-label">版本</span>
-            <span className="set-value mono">
-              ClaudeDeck {versions?.app ?? '—'}
-              {versions?.cli ? ` · Claude Code ${versions.cli}` : ''}
-            </span>
-          </div>
+          {/* 主题与账号不在这儿 —— 它们跟着侧栏底部那颗按钮走。
+              这里只放「这个应用怎么连上 Claude Code」这一件事。 */}
         </div>
       </div>
     </div>

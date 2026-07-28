@@ -1,0 +1,7 @@
+<!-- 由 scripts/make-icon.mjs 生成,不要手改 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#a75f38" />
+  <rect x="100" y="128" width="68" height="256" rx="20" fill="#faf7f2" />
+  <rect x="200" y="128" width="212" height="256" rx="20" fill="#faf7f2" />
+  <circle cx="306" cy="256" r="36" fill="#a75f38" />
+</svg>

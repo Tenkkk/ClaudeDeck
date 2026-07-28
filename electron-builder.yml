@@ -16,6 +16,8 @@ asarUnpack:
   - node_modules/@anthropic-ai/claude-agent-sdk/**/*
 
 win:
+  # 由 npm run icon 从 build/icon.svg 生成;electron-builder 据此打出 .ico
+  icon: build/icon.png
   target:
     - target: nsis
       arch: [x64]

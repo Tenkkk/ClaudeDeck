@@ -153,9 +153,16 @@ try {
   check('侧栏能再展开', true)
 
   // 新建会话移到品牌行,不再有那一整行与快捷键标注
-  const brandBtn = await page.$$eval('.sidebar-brand .icon-btn', (n) => n.length)
+  const brandBtn = await page.$$eval('.sidebar-brand .new-session', (n) => n.length)
   check('新建会话在品牌行', brandBtn === 1)
-  check('原来那一整行已去掉', (await page.$$eval('.new-session', (n) => n.length)) === 0)
+  // 光一个图标不说明自己是什么 —— 必须带字
+  const newLabel = await page.$eval('.new-session', (e) => e.textContent?.trim() ?? '')
+  check('新建会话带文字', newLabel.includes('新建会话'), newLabel)
+  check('不再显示快捷键', (await page.$$eval('.new-session kbd', (n) => n.length)) === 0)
+
+  // 标题栏那条不画分隔线 —— 无边框就是为了让它和下面是一整块
+  const tbBorder = await page.$eval('.titlebar', (e) => getComputedStyle(e).borderBottomWidth)
+  check('标题栏没有分隔线', tbBorder === '0px', tbBorder)
 
   // 旧结构的 workspaces 应当被迁移成项目,并出现在侧栏
   const projectNames = await page.$$eval('.project-row .name', (n) => n.map((e) => e.textContent))
@@ -238,7 +245,7 @@ try {
     check('侧边栏出现历史会话', firstCount > 0, `${firstCount} 条`)
 
     // 新建一个会话,让列表里有两条可切换
-    await page.click('.sidebar-brand .icon-btn')
+    await page.click('.new-session')
     await page.fill('.composer textarea', '只回复两个字:第二')
     await send(page)
     await page.waitForFunction(
@@ -524,8 +531,9 @@ try {
     })
     check('✕ 关掉整栏', (await page.$$eval('.shell.with-mid', (n) => n.length)) === 0)
 
-    // 搜索面板:跨项目按标题过滤,Esc 关闭
-    await page.click('.titlebar-left .win-btn:last-child')
+    // 搜索面板:跨项目按标题过滤,Esc 关闭。
+    // 标题栏左侧三颗依次是:侧栏开关 / 搜索 / 系统设置
+    await page.click('.titlebar-left .win-btn:nth-child(2)')
     await page.waitForSelector('.search-panel', { timeout: 10_000 })
     const allRows = await page.$$eval('.search-row', (n) => n.length)
     check('搜索面板列出会话', allRows > 0, `${allRows} 条`)
@@ -546,7 +554,7 @@ try {
     check('Esc 关闭搜索', true)
 
     // 设置对话框:接管情况 + 凭据 + 主题 + 关于
-    await page.click('.settings-btn')
+    await page.click('.titlebar-left .win-btn:nth-child(3)')
     await page.waitForSelector('.dialog', { timeout: 10_000 })
     const setText = await page.$eval('.dialog-body', (e) => e.textContent ?? '')
     check('设置里写明 Claude Code 来源', /随安装包分发|系统 PATH/.test(setText))
@@ -664,13 +672,14 @@ try {
     check('努力滑块能拖动', draggedTo === '5', `拖到第 ${draggedTo} 档`)
 
     // 2 两栏之间的竖线能拖,且拖不过下限
-    const beforeW = await page.$eval('.shell', (e) => e.style.getPropertyValue('--w-sidebar'))
+    // 宽度变量挂在 .app 上(标题栏在 shell 之外,也要按侧栏宽度取色)
+    const beforeW = await page.$eval('.app', (e) => e.style.getPropertyValue('--w-sidebar'))
     const rb = await (await page.$('.resizer-sidebar')).boundingBox()
     await page.mouse.move(rb.x + rb.width / 2, rb.y + 200)
     await page.mouse.down()
     await page.mouse.move(rb.x + 120, rb.y + 200, { steps: 6 })
     await page.mouse.up()
-    const afterW = await page.$eval('.shell', (e) => e.style.getPropertyValue('--w-sidebar'))
+    const afterW = await page.$eval('.app', (e) => e.style.getPropertyValue('--w-sidebar'))
     check('侧栏竖线能拖动', beforeW !== afterW, `${beforeW} → ${afterW}`)
     // 手柄跟着侧栏移动了,坐标必须重新取 —— 拿旧坐标去按,按的是空处,
     // 那样这条断言只会空过一遍
@@ -679,24 +688,33 @@ try {
     await page.mouse.down()
     await page.mouse.move(rb2.x - 400, rb2.y + 200, { steps: 6 })
     await page.mouse.up()
-    const floored = await page.$eval('.shell', (e) => e.style.getPropertyValue('--w-sidebar'))
+    const floored = await page.$eval('.app', (e) => e.style.getPropertyValue('--w-sidebar'))
     check(
       '拖到底也不会小于最小宽度',
       floored !== afterW && parseInt(floored, 10) === 200,
       `${afterW} → ${floored}`,
     )
 
-    // 5 左下角是齿轮,点开是完整设置(不再是那个小浮窗)
+    // 拖完还原 —— 不还原的话后面所有小节都在 200px 的窄侧栏下跑,
+    // 一个只在窄侧栏才出现的布局问题会被记到别的断言头上
+    const rb3 = await (await page.$('.resizer-sidebar')).boundingBox()
+    await page.mouse.move(rb3.x + rb3.width / 2, rb3.y + 200)
+    await page.mouse.down()
+    await page.mouse.move(rb3.x + 64, rb3.y + 200, { steps: 6 })
+    await page.mouse.up()
+    const restored = await page.$eval('.app', (e) => e.style.getPropertyValue('--w-sidebar'))
+    check('拖回正常宽度', parseInt(restored, 10) > 200, restored)
+
+    // 5 左下角那颗管外观与账号(「怎么连上 Claude Code」在标题栏的齿轮里)
     const gear = await page.$$eval('.settings-btn', (n) => n.length)
-    check('左下角出现齿轮入口', gear === 1)
+    check('左下角有外观入口', gear === 1)
     await page.click('.settings-btn')
-    await page.waitForSelector('.dialog-body', { timeout: 10_000 })
-    const aboutText = await page.$eval('.dialog-body', (e) => e.textContent ?? '')
-    check('设置里有版本信息', /ClaudeDeck/.test(aboutText), aboutText.slice(-40).trim())
-    await page.click('.dialog-head .icon-btn')
-    await page.waitForFunction(() => !document.querySelector('.dialog'), undefined, {
-      timeout: 5_000,
-    })
+    await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
+    const lookText = await page.$eval('.popover', (e) => e.textContent ?? '')
+    check('外观浮窗里有主题', /跟随系统/.test(lookText))
+    check('外观浮窗里有版本', /ClaudeDeck/.test(lookText), lookText.slice(-36).trim())
+    check('外观浮窗里没有密钥设置', !/API Key|Base URL/.test(lookText))
+    await page.keyboard.press('Escape')
 
     // 4 /model 不该被当成消息发出去
     const msgsBefore = await page.$$eval('.msg-user', (n) => n.length)
@@ -710,7 +728,7 @@ try {
     await page.keyboard.press('Escape')
 
     // 6 + 7:一发出去,侧栏立刻多一条,同时出现等待态
-    await page.click('.sidebar-brand .icon-btn')
+    await page.click('.new-session')
     await settle(page)
     const rowsBefore = await page.$$eval('.session-row', (n) => n.length)
     await page.fill('.composer textarea', '只回复两个字:好的')
@@ -833,15 +851,21 @@ try {
     const agentNames = await page.$$eval('.agent-row .mcp-name', (n) => n.map((e) => e.textContent?.trim()))
     check('/agents 列出子 Agent', agentsUp, agentNames.slice(0, 4).join(', '))
 
-    // 账号信息进了设置对话框
-    await page.click('.settings-btn')
+    // 两个入口各管各的:标题栏齿轮 = 怎么连上 Claude Code,左下角 = 外观与账号
+    await page.click('.titlebar-left .win-btn:nth-child(3)')
     await page.waitForSelector('.dialog-body', { timeout: 10_000 })
-    const gearText = await page.$eval('.dialog-body', (e) => e.textContent ?? '')
-    check('设置里能看到账号或版本', /ClaudeDeck/.test(gearText), gearText.slice(-60).trim())
+    const sysText = await page.$eval('.dialog-body', (e) => e.textContent ?? '')
+    check('系统设置只管连接', /Base URL/.test(sysText) && !/跟随系统/.test(sysText))
     await page.click('.dialog-head .icon-btn')
     await page.waitForFunction(() => !document.querySelector('.dialog'), undefined, {
       timeout: 5_000,
     })
+
+    await page.click('.settings-btn')
+    await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
+    const acctText = await page.$eval('.popover', (e) => e.textContent ?? '')
+    check('外观浮窗里能看到账号', /@|Claude Max|ClaudeDeck/.test(acctText), acctText.slice(-50).trim())
+    await page.keyboard.press('Escape')
 
     // ---- 正文排版 --------------------------------------------------------------
     // 以前整块是纯文本,**粗体**、列表、```代码块``` 的原始符号直接印在界面上。

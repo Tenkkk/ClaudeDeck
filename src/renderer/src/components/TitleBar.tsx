@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PanelIcon, SearchIcon } from './Icons.js'
+import { GearIcon, PanelIcon, SearchIcon } from './Icons.js'
 
 /**
  * 自绘标题栏。
@@ -16,11 +16,13 @@ export default function TitleBar({
   onToggleSidebar,
   sidebarOpen,
   onSearch,
+  onSettings,
   bare,
 }: {
   onToggleSidebar: () => void
   sidebarOpen: boolean
   onSearch: () => void
+  onSettings: () => void
   /** 加载页/引导页/选项目页:还没有侧栏和会话,左侧那两个入口就不给 */
   bare?: boolean
 }): React.JSX.Element {
@@ -46,6 +48,11 @@ export default function TitleBar({
             </button>
             <button className="win-btn" title="搜索会话" onClick={onSearch}>
               <SearchIcon size={14} />
+            </button>
+            {/* 系统设置在这儿:接管的是哪一份 Claude Code、走哪个端点。
+                外观与账号不在这儿,在侧栏底部 —— 那是两类不同的东西。 */}
+            <button className="win-btn" title="系统设置" onClick={onSettings}>
+              <GearIcon size={14} />
             </button>
           </>
         )}

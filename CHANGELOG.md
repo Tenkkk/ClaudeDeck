@@ -2,7 +2,16 @@
 
 本项目仍在持续迭代。版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## 未发布
+## 0.2.0 —— 2026-07-28
+
+自 0.1.0 起,界面外壳、对话区渲染与 SDK 能力接入都做了较大改动;
+0.1.0 安装包无法启动子进程的问题也在这一版修复。
+
+### 新增
+
+- **应用图标。** 此前用的是 Electron 默认图标。图形由
+  `scripts/make-icon.mjs` 从几何定义直接生成 SVG 与各尺寸 PNG,
+  不引图形库,也不会出现 SVG 与位图两份不同步。
 
 ### 新增
 
@@ -50,6 +59,11 @@
   变成可修改任意源码的编辑器。二进制和超过 512 KB 的文件直接拒绝并说明原因。
 
 ### 修复(实测反馈第四批)
+
+- **新建会话后立刻拖 Effort 滑块会报「No conversation found with session ID」。**
+  `system/init` 一上来就给了 session_id,但那时会话文件还没写;切 Effort 需要
+  重开 query 并 `resume`,拿这个 id 去续就找不到。现在只有真发过消息(或本来
+  就是从已有会话续上来的)才带 resume。
 
 - **切走再切回来,斜杠命令变成一坨标记。** CLI 把 `/config` 展开成
   `<command-name>…</command-name><command-message>…` 存进会话文件,重建历史时
