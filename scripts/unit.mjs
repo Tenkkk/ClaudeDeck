@@ -9,7 +9,7 @@
 import { truncatePath, relativeTime } from '../src/renderer/src/lib/path.ts'
 import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
 import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
-import { askCardFromPayload, askResult, planCardFromPayload } from '../src/main/dialogs.ts'
+import { askCardFromPayload, askAnswerPatch, planCardFromPayload } from '../src/main/dialogs.ts'
 import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 import { bundledExecutablePath } from '../src/main/binary.ts'
 import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
@@ -236,8 +236,8 @@ console.log('\ndialogs —— user dialog 的 payload 归一化 §13 / §06')
   eq('保留 preview', card?.questions[0].options[0].preview, '<b>预览</b>')
   eq('缺 description 补空串', card?.questions[1].options[0].description, '')
 
-  // 作答按题干原文回填 —— 这是工具的输出契约
-  const result = askResult(card, {
+  // 作答按题干原文回填 —— 实测:用 header 当键校验过不了,模型照样收到「没人作答」
+  const result = askAnswerPatch(card, {
     answers: {
       '新 query 建不起来的时候,应该怎么处理?': '直接报错',
       '这次要顺手做掉哪几件?': '补一条 typecheck, 更新 CLAUDE.md',
@@ -249,7 +249,7 @@ console.log('\ndialogs —— user dialog 的 payload 归一化 §13 / §06')
   eq('多选逗号分隔', result.answers['这次要顺手做掉哪几件?'], '补一条 typecheck, 更新 CLAUDE.md')
   eq('空 note 不回传', result.annotations, undefined)
 
-  const freeform = askResult(card, { answers: {}, response: '四道题都不合适' })
+  const freeform = askAnswerPatch(card, { answers: {}, response: '四道题都不合适' })
   eq('自由作答走 response', freeform.response, '四道题都不合适')
 
   // 认不出形状一律返回 null,交给「安全取消」—— 宁可不画也不猜着画

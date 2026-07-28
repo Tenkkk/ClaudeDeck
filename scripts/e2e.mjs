@@ -97,7 +97,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/9] 进程桥接')
+  console.log('[0/10] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -113,7 +113,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/9] 聊天')
+  console.log('\n[1/10] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -130,7 +130,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/9] 切换模型')
+  console.log('\n[2/10] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -169,7 +169,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/9] 会话列表与切换')
+  console.log('\n[3/10] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -211,7 +211,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/9] 工具行')
+  console.log('\n[4/10] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -264,7 +264,7 @@ try {
   check('每条消息都带复制动作', copyBtns.length > 0, `${copyBtns.length} 个`)
 
   // ---- 斜杠命令面板 · §15 -------------------------------------------------
-  console.log('\n[5/9] 斜杠命令面板')
+  console.log('\n[5/10] 斜杠命令面板')
   await settle(page)
   await page.fill('.composer textarea', '/')
   const opened = await page
@@ -307,7 +307,7 @@ try {
   }
 
   // ---- 从这条重答:分支与文件回退 · §12 -----------------------------------
-  console.log('\n[6/9] 分支与文件回退')
+  console.log('\n[6/10] 分支与文件回退')
   // 消息 id 是每轮结束后从 store 重载才有的 —— 直播流里的用户消息不带 uuid
   const forkable = await page
     .waitForFunction(
@@ -351,7 +351,7 @@ try {
 
   // ---- .claude 配置栏 · §10 ----------------------------------------------
   // 这一节纯文件读写,不产生 API 调用
-  console.log('\n[7/9] .claude 配置栏')
+  console.log('\n[7/10] .claude 配置栏')
   await page.click('.claude-node')
   await page.waitForSelector('.claude-file', { timeout: 10_000 })
   const files = await page.$$eval('.claude-file .mono', (n) => n.map((e) => e.textContent?.trim()))
@@ -408,7 +408,7 @@ try {
   check('选「不保存」后中栏关闭', true)
 
   // ---- 会话右键菜单 · §08 ------------------------------------------------
-  console.log('\n[8/9] 会话右键菜单')
+  console.log('\n[8/10] 会话右键菜单')
   await page.click('.sidebar-scroll .session-row', { button: 'right' })
   await page.waitForSelector('.ctx', { timeout: 10_000 })
   const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>
@@ -465,7 +465,7 @@ try {
 
   // ---- 实测反馈的七项 ------------------------------------------------------
   // 这一节全是用户装完之后逐条指出来的问题。钉在这儿,免得下次又要靠手点才发现。
-  console.log('\n[9/9] 实测反馈的七项')
+  console.log('\n[9/10] 实测反馈的七项')
 
   // 1 模型弹层:有描述,没有那列没意义的编号
   await page.click('[data-control="model"]')
@@ -564,6 +564,61 @@ try {
   await settle(page)
   const stillThinking = await page.$$eval('.thinking', (n) => n.length)
   check('答完就收起', stillThinking === 0)
+
+  // ---- Claude 反问你 · §13 ---------------------------------------------------
+  // 这条以前是「实现了但触发不到」。实测发现它根本不走 onUserDialog,而是走
+  // canUseTool —— 直接放行的话工具就在无人作答的情况下跑完,模型收到
+  // "The user did not answer the questions."。这一节就是钉住那条通道。
+  console.log('\n[10/10] Claude 反问你')
+  await page.fill(
+    '.composer textarea',
+    '用 AskUserQuestion 问我一个问题,两个选项,第一个选项的 label 必须是「甲方案」。只做这一件事,不要解释。',
+  )
+  await page.click('.composer [data-state="send"]')
+
+  const cardUp = await page
+    .waitForSelector('.ask-card', { timeout: 120_000 })
+    .then(() => true)
+    .catch(() => false)
+  check('反问卡真的弹出来了', cardUp)
+
+  if (cardUp) {
+    const opts = await page.$$eval('.ask-option .pop-title', (n) => n.map((e) => e.textContent?.trim()))
+    check('卡里列出了选项', opts.length >= 2, opts.join(' / '))
+
+    // 选中不等于提交 —— 卡片里有独立的「提交」按钮,要走完真实路径
+    await page.click('.ask-option')
+    const submitLabel = await page.$eval('.ask-card .row .primary', (e) => e.textContent?.trim())
+    check('选完才让提交', submitLabel === '提交', submitLabel)
+    await page.click('.ask-card .row .primary')
+
+    // 作答后卡片收起,本轮继续走完
+    const gone = await page
+      .waitForFunction(() => document.querySelectorAll('.ask-card').length === 0, { timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false)
+    check('作答后卡片收起', gone)
+
+    await settle(page)
+    // 模型必须真的收到答案 —— 收不到的话它会说「你没选」
+    const tail = await page.$$eval('.msg-claude', (n) => n[n.length - 1]?.textContent ?? '')
+    check('模型没有收到「没人作答」', !/没.{0,2}(选|回答|作答)|did not answer/.test(tail), tail.trim().slice(0, 60))
+  }
+
+  // /mcp 这类命令不归界面接管,是发给 CLI 的 —— 它有回复,只是回复比终端里简略。
+  // 钉一条,免得又被当成「石沉大海」。
+  const before = await page.$$eval('.msg-claude', (n) => n.length)
+  await page.fill('.composer textarea', '/mcp')
+  await page.click('.composer [data-state="send"]')
+  const answered = await page
+    .waitForFunction((n) => document.querySelectorAll('.msg-claude').length > n, before, {
+      timeout: 90_000,
+    })
+    .then(() => true)
+    .catch(() => false)
+  const mcpText = await page.$$eval('.msg-claude', (n) => n[n.length - 1]?.textContent ?? '')
+  check('/mcp 有回复,不是石沉大海', answered && /MCP/i.test(mcpText), mcpText.trim().slice(0, 70))
+  await settle(page)
 } catch (err) {
   failed++
   console.error('\n异常:', err?.message ?? err)

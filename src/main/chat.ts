@@ -2,10 +2,8 @@ import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthro
 import { resolveClaudeExecutable } from './binary.js'
 import { credentialEnv } from './config.js'
 import {
+  askAnswerPatch,
   askCardFromPayload,
-  askResult,
-  KIND_ASK,
-  KIND_PLAN,
   planCardFromPayload,
   SUPPORTED_DIALOG_KINDS,
 } from './dialogs.js'
@@ -109,6 +107,8 @@ export class ChatSession {
   private taskSince = new Map<string, number>()
   /** 本轮累计的输出 token,每次 send 清零 */
   private outputTokens = 0
+  /** 当前这条助手消息是否已经流式送过正文 —— 决定收尾时要不要补画 */
+  private streamedText = false
   private pendingAsks = new Map<string, (v: AskAnswer | null) => void>()
   private pendingPlans = new Map<string, (accepted: boolean) => void>()
   private pendingElicitations = new Map<
@@ -178,43 +178,61 @@ export class ChatSession {
         supportedDialogKinds: SUPPORTED_DIALOG_KINDS,
 
         onUserDialog: async (request) => {
-          // Claude 反问你 · §13
-          if (request.dialogKind === KIND_ASK) {
+          // 认不出形状:一律安全取消,并在界面上低调说明是哪个 kind。
+          // 宁可不画,也不猜着画一个框 —— 猜错的选择会真的落到文件上。
+          this.emit({ type: 'unknownDialog', notice: { dialogKind: request.dialogKind } })
+          return { behavior: 'cancelled' }
+        },
+        canUseTool: async (toolName, input) => {
+          /*
+           * 下面两个工具**不是权限请求**,只是借了 canUseTool 这条通道:
+           * 它们是「Claude 在问你」,答复本身就是工具的结果。
+           *
+           * 之前我把它们接在 onUserDialog 上,因为 CLI 二进制里确实有
+           * kind:"permission_ask_user_question" 这样的注册项 —— 但那条通道
+           * 在 Agent SDK 会话里根本不响。实测:AskUserQuestion 到达的是
+           * canUseTool,而不是 onUserDialog;直接放行的话工具就在无人作答的
+           * 情况下跑完,模型收到一句 "The user did not answer the questions."
+           *
+           * 所以这两个分支必须排在 alwaysAllow 前面 —— 「本次会话内不再问」
+           * 说的是权限,不能把一个提问也一并跳过。
+           */
+
+          // Claude 反问你 · §13。答案通过 updatedInput.answers 回去,
+          // 键是**题干原文**(CLI 自己的 reducer 就是这么存的)。
+          if (toolName === 'AskUserQuestion') {
             const id = `ask-${++dialogSeq}`
-            const card = askCardFromPayload(id, request.payload)
+            const card = askCardFromPayload(id, input)
             if (card) {
               const answer = await new Promise<AskAnswer | null>((resolve) => {
                 this.pendingAsks.set(id, resolve)
                 this.emit({ type: 'ask', card })
               })
-              return answer
-                ? { behavior: 'completed', result: askResult(card, answer) }
-                : { behavior: 'cancelled' }
+              // 放弃作答就照实说,不要伪造一个选项
+              if (!answer) return { behavior: 'deny' as const, message: '用户没有作答。' }
+              return {
+                behavior: 'allow' as const,
+                updatedInput: { ...input, ...askAnswerPatch(card, answer) },
+              }
             }
+            // 认不出形状就原样放行,让 CLI 走它自己的「没人作答」默认路径
           }
 
-          // 计划卡 · §06
-          if (request.dialogKind === KIND_PLAN) {
+          // 计划卡 · §06。input 是 { plan, planFilePath },批准与否就是 allow/deny。
+          if (toolName === 'ExitPlanMode') {
             const id = `plan-${++dialogSeq}`
-            const card = planCardFromPayload(id, request.payload)
+            const card = planCardFromPayload(id, input)
             if (card) {
               const accepted = await new Promise<boolean>((resolve) => {
                 this.pendingPlans.set(id, resolve)
                 this.emit({ type: 'plan', card })
               })
               return accepted
-                ? { behavior: 'completed', result: { behavior: 'allow' } }
-                : { behavior: 'cancelled' }
+                ? { behavior: 'allow' as const, updatedInput: input }
+                : { behavior: 'deny' as const, message: '用户还不想按这个计划开始。' }
             }
           }
 
-          // 认不出形状(含未声明的 kind、以及声明了但 payload 变形的情况):
-          // 一律安全取消,并在界面上低调说明是哪个 kind。
-          // 宁可不画,也不猜着画一个框 —— 猜错的选择会真的落到文件上。
-          this.emit({ type: 'unknownDialog', notice: { dialogKind: request.dialogKind } })
-          return { behavior: 'cancelled' }
-        },
-        canUseTool: async (toolName, input) => {
           // 用户勾过「本次会话内不再问」的工具直接放行,不再打断
           if (this.alwaysAllow.has(toolName)) {
             return { behavior: 'allow' as const, updatedInput: input }
@@ -266,6 +284,7 @@ export class ChatSession {
         usage?: { output_tokens?: number }
       }
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
+        this.streamedText = true
         this.emit({ type: 'delta', text: event.delta.text })
       }
       // usage 只在每条助手消息收尾时出现一次。一轮里若有工具往返就会有多条
@@ -289,8 +308,21 @@ export class ChatSession {
           const row = rowFromToolUse(block.id, block.name, block.input)
           this.toolRows.set(block.id, row)
           this.emit({ type: 'tool', row })
+        } else if (block.type === 'text' && !this.streamedText && block.text) {
+          /*
+           * 正文平时是靠 stream_event 的增量渲染的,这条完整消息只是收尾,
+           * 再画一遍就重了 —— 所以默认跳过。
+           *
+           * 但**有的助手消息根本不流式**:/mcp、/cost 这类内置命令的回复由
+           * CLI 直接合成,一次性整条送达,没有任何 text_delta。只认增量的话
+           * 这些回复在界面上凭空消失 —— 表现就是「敲了命令什么也没发生」。
+           * 所以这一轮没收到过增量时,把整条补上。
+           */
+          this.emit({ type: 'delta', text: block.text })
         }
       }
+      // 下一条助手消息重新判断
+      this.streamedText = false
       return
     }
 

@@ -1,37 +1,40 @@
 import type { AskAnswer, AskCard, AskOption, AskQuestion, PlanCard } from '../shared/ipc.js'
 
 /**
- * 把 CLI 的 user dialog payload 归一化成能渲染的卡片。
+ * 把 AskUserQuestion / ExitPlanMode 的工具入参归一化成能渲染的卡片。
  *
- * ## 这些字段是怎么来的
+ * ## 走的是哪条路(实测,不是推断)
  *
- * `dialogKind` 是开放字符串,`payload` 在协议层只是不透明对象 —— SDK 的类型
- * 里查不到任何一种的形状。但 CLI 二进制里带着它自己的 payload 校验器,
- * 从那儿读出来的是实证,不是猜测:
+ * 这两件事**不是 user dialog,是普通工具调用**,通过 `canUseTool` 到达:
  *
  * ```
- * {kind:"permission_ask_user_question",
- *  payload 必含 requestId / toolName / permissionResult / questions}
- * {kind:"permission_exit_plan_mode_v2",
- *  payload 必含 requestId / toolName / permissionResult / plan}
- * 两者的 result 都必须含 behavior,超时默认 {behavior:"cancelled"}
+ * canUseTool('AskUserQuestion', { questions: [...] })
+ *   → { behavior:'allow', updatedInput: { ...input, answers } }
+ *     answers 以**题干原文**为键,值是选项 label(多选可用数组或逗号分隔)
+ *     模型随后收到 "The user answered: ..." ;不带 answers 放行的话,
+ *     收到的是 "The user did not answer the questions."
+ *
+ * canUseTool('ExitPlanMode', { plan, planFilePath })
+ *   → allow 即批准计划,deny 的 message 会回到模型那里
  * ```
  *
- * ## ⚠️ 未经端到端验证
+ * 我一开始把它们接在 `onUserDialog` 上,因为 CLI 二进制里确实注册了
+ * `kind:"permission_ask_user_question"` 这样的条目。那是个真实存在、但在
+ * Agent SDK 会话里**不会响**的通道:声明了 supportedDialogKinds 也照样只有
+ * canUseTool 被调用。结论只能靠跑一次拿到,靠读二进制字符串会读岔。
  *
- * `AskUserQuestion` 与 `ExitPlanMode` 在当前的 SDK 会话里不上场(见 CLAUDE.md
- * 「SDK 会话里拿不到的东西」),所以这两条通道**永远不会响**。这里的代码只在
- * 真收到对应 dialog 时才执行,对现有行为零影响;等 SDK 放开就能自动生效。
- *
- * 认不出形状时一律返回 null,交给调用方走「安全取消」那条路 ——
- * 宁可不画,也不猜着画一个框:猜错的选择会真的落到文件上。
+ * 认不出形状时一律返回 null,交给调用方原样放行 —— 宁可让 CLI 走它自己的
+ * 默认路径,也不猜着画一个框:猜错的选择会真的落到文件上。
  */
 
-export const KIND_ASK = 'permission_ask_user_question'
-export const KIND_PLAN = 'permission_exit_plan_mode_v2'
-
-/** 我们声明会画的那几种。没声明的 CLI 自己按默认处理,根本不问我们。 */
-export const SUPPORTED_DIALOG_KINDS = [KIND_ASK, KIND_PLAN]
+/**
+ * 我们声明会画的 user dialog 种类 —— 一种都没有。
+ *
+ * 空着是有意的:CLI 对没声明的 kind 一律按「宿主画不了」处理,退回它自己的
+ * 默认行为,这正是我们要的。声明一个画不出来的 kind 反而会把流程停在那儿等
+ * 一张永远不会出现的卡。
+ */
+export const SUPPORTED_DIALOG_KINDS: string[] = []
 
 interface Rec {
   [k: string]: unknown
@@ -80,17 +83,22 @@ export function planCardFromPayload(id: string, payload: unknown): PlanCard | nu
 }
 
 /**
- * 拼回给 CLI 的作答。键用**题干原文** —— 这是 AskUserQuestion 的输出契约
- * 规定的(`answers: { [question]: string }`,多选逗号分隔)。
+ * 作答要打进 `updatedInput` 的那几个字段。
+ *
+ * 只返回补丁,不带 `questions` —— 调用方是 `{ ...input, ...这里 }`,原样保留
+ * CLI 自己给的 questions,免得我归一化过的版本把它盖掉。
+ *
+ * 键用**题干原文**:CLI 内部的作答 reducer 就是 `answers[questionText]`,
+ * 用 header 当键的话字段收得下、校验过不了,模型照样收到「没人作答」。
  */
-export function askResult(card: AskCard, answer: AskAnswer): Record<string, unknown> {
+export function askAnswerPatch(card: AskCard, answer: AskAnswer): Record<string, unknown> {
   const answers: Record<string, string> = {}
   for (const q of card.questions) {
     const v = answer.answers[q.question]
     if (v) answers[q.question] = v
   }
 
-  const out: Record<string, unknown> = { questions: card.questions, answers }
+  const out: Record<string, unknown> = { answers }
   if (answer.response?.trim()) out.response = answer.response.trim()
 
   // 注意判断的是**过滤之后**的结果:输入里可能有键但值全是空串,
