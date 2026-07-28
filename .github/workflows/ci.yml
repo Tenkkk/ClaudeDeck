@@ -31,5 +31,9 @@ jobs:
       - name: Unit tests
         run: npm run unit
 
+      # 两套主题的对比度下限。纯计算,不需要窗口也不花钱。
+      - name: Contrast audit
+        run: npm run contrast
+
       - name: Build
         run: npm run build

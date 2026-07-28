@@ -178,6 +178,24 @@ export default function App(): React.JSX.Element {
     })
   }, [phase, refreshSessions, refreshMeters])
 
+  /**
+   * 主题 · §16。把「跟随系统 / 始终亮色 / 始终深色」解析成一个确定的值写到
+   * 根元素上,CSS 那边就只需要 :root[data-theme='dark'] 一个选择器,
+   * 不用再写一遍 prefers-color-scheme,也就不会两处走岔。
+   */
+  useEffect(() => {
+    const pref = config?.theme ?? 'system'
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = (): void => {
+      const dark = pref === 'dark' || (pref === 'system' && media.matches)
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    }
+    apply()
+    if (pref !== 'system') return
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [config?.theme])
+
   // 输入框自动增高,到 --h-composer-max 封顶后内部滚动 · §07
   useEffect(() => {
     const el = composerRef.current
@@ -290,6 +308,8 @@ export default function App(): React.JSX.Element {
           await refreshSessions()
         }}
         onManageProjects={() => setPhase('projects')}
+        theme={config?.theme ?? 'system'}
+        onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
       />
 
       <main className="main">

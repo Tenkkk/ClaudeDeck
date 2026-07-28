@@ -1,6 +1,15 @@
-import { CaretIcon, FolderIcon, PlusIcon, SearchIcon } from './Icons.js'
+import { useState } from 'react'
+import { CaretIcon, CheckIcon, FolderIcon, PlusIcon, SearchIcon } from './Icons.js'
+import Popover from './Popover.js'
 import { relativeTime } from '../lib/path.js'
-import type { Project, SessionListItem, UsageInfo, Versions } from '../../../shared/ipc.js'
+import {
+  THEME_OPTIONS,
+  type Project,
+  type SessionListItem,
+  type ThemePref,
+  type UsageInfo,
+  type Versions,
+} from '../../../shared/ipc.js'
 
 const COLLAPSED_LIMIT = 3
 
@@ -26,6 +35,8 @@ export default function Sidebar({
   onExpandAll,
   onAddProject,
   onManageProjects,
+  theme,
+  onTheme,
 }: {
   projects: Project[]
   sessionsByProject: Record<string, SessionListItem[]>
@@ -42,7 +53,10 @@ export default function Sidebar({
   onExpandAll: (path: string) => void
   onAddProject: () => void
   onManageProjects: () => void
+  theme: ThemePref
+  onTheme: (t: ThemePref) => void
 }): React.JSX.Element {
+  const [themeOpen, setThemeOpen] = useState(false)
   return (
     <aside className="sidebar">
       {/* 侧栏的品牌位不带圆点 —— 那颗呼吸点是加载态与空态的元件(§02),
@@ -195,13 +209,45 @@ export default function Sidebar({
             </span>
           </div>
         )}
-        <button className="version-row" title="主题与关于(第 7 步实现)">
-          <span>
-            {versions?.app ?? '—'}
-            {versions?.cli ? ` · CLI ${versions.cli}` : ''}
-          </span>
-          {usage && <span>本会话 ${usage.sessionCostUsd.toFixed(2)}</span>}
-        </button>
+        {/* §16:主题开关挂在版本行上 —— 不为一个三选一再造一屏设置界面 */}
+        <div className="version-slot">
+          <button
+            className="version-row"
+            aria-expanded={themeOpen}
+            title="主题与关于"
+            onClick={() => setThemeOpen((v) => !v)}
+          >
+            <span>
+              {versions?.app ?? '—'}
+              {versions?.cli ? ` · CLI ${versions.cli}` : ''}
+            </span>
+            {usage && <span>本会话 ${usage.sessionCostUsd.toFixed(2)}</span>}
+          </button>
+
+          <Popover open={themeOpen} onClose={() => setThemeOpen(false)} width={200}>
+            <div className="pop-group">主题</div>
+            {THEME_OPTIONS.map((t) => (
+              <button
+                key={t.value}
+                className={`pop-row${t.value === theme ? ' current' : ''}`}
+                onClick={() => {
+                  onTheme(t.value)
+                  setThemeOpen(false)
+                }}
+              >
+                <span className="pop-check">{t.value === theme ? <CheckIcon size={9} /> : ''}</span>
+                <span className="pop-body">
+                  <span className="pop-title">{t.label}</span>
+                </span>
+              </button>
+            ))}
+            <div className="ctx-sep" />
+            <div className="about-row">
+              ClaudeDeck {versions?.app ?? '—'}
+              {versions?.cli ? ` · Claude Code ${versions.cli}` : ''}
+            </div>
+          </Popover>
+        </div>
       </div>
     </aside>
   )

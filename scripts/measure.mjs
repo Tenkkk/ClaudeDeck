@@ -164,6 +164,34 @@ try {
     if (w === 1200) await page.screenshot({ path: join(SHOT, 'screen-D-main.png') })
   }
 
+  // 深色 · §16:同一批变量名换一组值,布局不动
+  console.log('\n深色 · §16')
+  await page.setViewportSize({ width: 1200, height: 800 })
+  const light = await page.evaluate(() => ({
+    bg: getComputedStyle(document.body).backgroundColor,
+    sidebar: Math.round(document.querySelector('.sidebar').getBoundingClientRect().width),
+  }))
+
+  await page.evaluate(() => (document.documentElement.dataset.theme = 'dark'))
+  await page.waitForTimeout(300)
+  const dark = await page.evaluate(() => ({
+    bg: getComputedStyle(document.body).backgroundColor,
+    ink: getComputedStyle(document.body).color,
+    sidebar: Math.round(document.querySelector('.sidebar').getBoundingClientRect().width),
+    hScroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  }))
+
+  ok('切到深色后底色确实变了', dark.bg !== light.bg, `${light.bg} → ${dark.bg}`)
+  eq('深色底 = --bg #1a1917', dark.bg, 'rgb(26, 25, 23)')
+  eq('深色正文 = --ink #eae4d9', dark.ink, 'rgb(234, 228, 217)')
+  // 「圆角、间距、字号、布局全部不变」—— 布局一行都不该动
+  eq('深色下侧栏仍为 264', dark.sidebar, light.sidebar)
+  ok('深色下无横向滚动', !dark.hScroll)
+  await page.screenshot({ path: join(SHOT, 'screen-D-dark.png') })
+
+  await page.evaluate(() => (document.documentElement.dataset.theme = 'light'))
+  await page.waitForTimeout(200)
+
   // 三个弹层各截一张,用于和设计终稿 §08 逐项对照
   console.log('\n控件条弹层 · §08')
   await page.setViewportSize({ width: 1200, height: 800 })

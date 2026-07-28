@@ -660,6 +660,28 @@ kbd,
   color: var(--ink-2);
 }
 
+/* 主题菜单挂在版本行上,朝上弹 · §16 */
+.version-slot {
+  position: relative;
+}
+
+.version-slot .popover {
+  position: absolute;
+  bottom: calc(100% + var(--s8));
+  left: 0;
+  z-index: 40;
+  display: grid;
+  gap: 1px;
+}
+
+.about-row {
+  padding: var(--s6) var(--s12) var(--s8);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+  line-height: 1.6;
+}
+
 .version-row {
   display: flex;
   align-items: center;

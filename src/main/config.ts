@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import type { AppConfig, EffortLevel, PermissionMode, Project } from '../shared/ipc.js'
+import type { AppConfig, EffortLevel, PermissionMode, Project, ThemePref } from '../shared/ipc.js'
 
 /**
  * Preferences live in userData/config.json. The API key is stored in the same
@@ -17,6 +17,7 @@ interface StoredConfig {
   model: string | null
   effort: EffortLevel
   permissionMode: PermissionMode
+  theme: ThemePref
 }
 
 /** Shape written by versions before projects existed. */
@@ -32,6 +33,7 @@ const DEFAULTS: StoredConfig = {
   model: null,
   effort: 'medium',
   permissionMode: 'default',
+  theme: 'system',
 }
 
 let cache: StoredConfig | null = null
@@ -97,6 +99,7 @@ export function getConfig(): AppConfig {
     model: c.model,
     effort: c.effort,
     permissionMode: c.permissionMode,
+    theme: c.theme,
   }
 }
 
@@ -110,6 +113,7 @@ export function updateConfig(patch: Partial<Omit<AppConfig, 'hasApiKey'>>): AppC
     model: patch.model !== undefined ? patch.model : c.model,
     effort: patch.effort ?? c.effort,
     permissionMode: patch.permissionMode ?? c.permissionMode,
+    theme: patch.theme ?? c.theme,
   })
   return getConfig()
 }

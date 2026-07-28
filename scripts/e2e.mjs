@@ -163,10 +163,12 @@ try {
     () => document.querySelectorAll('.msg-claude').length > 0,
     { timeout: 90_000 },
   )
+  // 这一步要等一整轮结束、会话写进 SDK 的 store、界面再刷新列表,给足时间
+  await settle(page)
   await page.waitForFunction(
     (n) => document.querySelectorAll('.sidebar-scroll .session-row').length > n,
     firstCount,
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   )
   const secondCount = await page.$$eval('.sidebar-scroll .session-row', (n) => n.length)
   check('新会话进入列表', secondCount > firstCount, `${firstCount} → ${secondCount}`)
@@ -205,13 +207,27 @@ try {
 
   // 展开按钮只在**结果回来、确实有输出**之后才出现(tool_use 时刻还没有),
   // 所以必须先等本轮结束。
+  // 精确定位 **Bash 那一块**的展开按钮 —— Edit 行也有展开按钮,
+  // 用 `.tool-block .tool-toggle` 取第一个的话,那一轮只要 Claude 先调了
+  // 别的带输出的工具,点开的就是 diff 而不是 stdout。
   await settle(page)
-  const toggle = await page
-    .waitForSelector('.tool-block .tool-toggle', { timeout: 30_000 })
-    .catch(() => null)
-  if (toggle) {
-    await toggle.click()
-    await page.waitForSelector('.tool-output', { timeout: 10_000 })
+  const bashOpened = await page
+    .waitForFunction(
+      () => {
+        const block = [...document.querySelectorAll('.tool-block')].find((b) =>
+          b.querySelector('.tool-name')?.textContent?.includes('Bash'),
+        )
+        const btn = block?.querySelector('.tool-toggle')
+        if (!btn) return false
+        btn.click()
+        return true
+      },
+      { timeout: 30_000 },
+    )
+    .then(() => true)
+    .catch(() => false)
+  if (bashOpened) {
+    await page.waitForSelector('.tool-output', { timeout: 15_000 })
     const out = (await page.textContent('.tool-output')) ?? ''
     check('展开后能看到命令输出', out.includes('e2e-tool-ok'), JSON.stringify(out.trim().slice(0, 40)))
   } else {
@@ -323,6 +339,27 @@ try {
 } catch (err) {
   failed++
   console.error('\n异常:', err?.message ?? err)
+  // 失败时把当时的界面截下来 —— 光看超时信息猜不出是哪一步卡住的
+  try {
+    const page = await app.firstWindow()
+    const shotDir = join(ROOT, '.screenshots')
+    mkdirSync(shotDir, { recursive: true })
+    await page.screenshot({ path: join(shotDir, 'e2e-failure.png') })
+    const state = await page.evaluate(() => ({
+      screen: document.querySelector('.shell')
+        ? 'workspace'
+        : document.querySelector('.card')
+          ? 'card'
+          : 'unknown',
+      overlay: [...document.querySelectorAll('.popover, .ctx, .palette')].map((e) => e.className),
+      composerDisabled: document.querySelector('.composer textarea')?.disabled ?? null,
+      error: document.querySelector('.error-line')?.textContent ?? null,
+    }))
+    console.error('当时的界面:', JSON.stringify(state))
+    console.error('截图:', join(shotDir, 'e2e-failure.png'))
+  } catch {
+    console.error('(截图失败,窗口可能已经没了)')
+  }
 } finally {
   await app.close().catch(() => {})
   rmSync(USER_DATA, { recursive: true, force: true })

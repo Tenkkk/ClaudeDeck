@@ -15,6 +15,18 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
 /**
+ * 主题 · §16。开关挂在侧栏底部的版本行上 —— 规格只有四屏,
+ * 为一个三选一再造一屏不值得,而版本号本来就是「关于这个软件」的天然入口。
+ */
+export type ThemePref = 'system' | 'light' | 'dark'
+
+export const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: 'system', label: '跟随系统' },
+  { value: 'light', label: '始终亮色' },
+  { value: 'dark', label: '始终深色' },
+]
+
+/**
  * 五个固定停靠点,不是连续滑块。控件条上只显示一个字,弹层里是
  * 「更快 ←→ 更聪明」的停靠式滑轨(设计终稿 §07 / §08)。
  */
@@ -61,6 +73,7 @@ export interface AppConfig {
   model: string | null
   effort: EffortLevel
   permissionMode: PermissionMode
+  theme: ThemePref
 }
 
 /**
