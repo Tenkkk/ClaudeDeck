@@ -97,8 +97,9 @@ try {
   // —— 它出得来,就说明 doctor 找到并成功启动了真身,而不是 asar 里那个壳。
   const foot = await page.$eval('.sidebar-foot', (e) => e.textContent ?? '')
   check('版本行报出 CLI 版本', /CLI\s+\d+\.\d+\.\d+/.test(foot), foot.trim())
-  // 额度块拿不到就整块消失(API Key / Bedrock / Vertex 会话 available: false),
-  // 所以这里只把实际内容打出来,不断言它一定在 —— 那取决于用的哪种凭据。
+  // 额度块不做断言,只把实际内容打出来 —— 它缺席有两种正当理由:
+  // 一是这类会话本就拿不到(API Key / Bedrock / Vertex 会 available: false),
+  // 二是额度在本轮结束后才异步刷进来,断在这里会抖。
   console.log(`        侧栏底部实际内容:${foot.trim()}`)
 } catch (err) {
   failed++
