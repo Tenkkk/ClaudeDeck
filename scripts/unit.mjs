@@ -10,6 +10,7 @@ import { truncatePath, relativeTime } from '../src/renderer/src/lib/path.ts'
 import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
 import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
 import { askCardFromPayload, askResult, planCardFromPayload } from '../src/main/dialogs.ts'
+import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 
 let passed = 0
 let failed = 0
@@ -259,6 +260,45 @@ console.log('\ndialogs —— user dialog 的 payload 归一化 §13 / §06')
   eq('计划取 plan 字段', planCardFromPayload('p1', { plan: '1. 先做 A\n2. 再做 B' })?.plan.length > 0, true)
   eq('缺 plan → null', planCardFromPayload('p1', { requestId: 'r' }), null)
   eq('plan 是空串 → null', planCardFromPayload('p1', { plan: '   ' }), null)
+}
+
+console.log('\nclaudedir —— 路径必须锁死 §10')
+{
+  const P = process.platform === 'win32' ? 'D:\\proj' : '/proj'
+  const inScope = (rel) => resolveInScope(P, rel)
+
+  // 允许的两类
+  eq('.claude 下的文件', inScope('.claude/settings.json') !== null, true)
+  eq('.claude 子目录里的文件', inScope('.claude/commands/release.md') !== null, true)
+  eq('项目根的 CLAUDE.md', inScope('CLAUDE.md') !== null, true)
+
+  // 越界的一律 null —— 这些不是理论风险,IPC 的输入一律不可信
+  eq('上跳一级', inScope('../secret.txt'), null)
+  eq('从 .claude 里跳出去', inScope('.claude/../../etc/passwd'), null)
+  eq('深度穿越', inScope('.claude/../../../Windows/System32/drivers/etc/hosts'), null)
+  eq('项目根的其他文件', inScope('package.json'), null)
+  eq('项目根的其他 md', inScope('README.md'), null)
+  eq('.claude 目录本身', inScope('.claude'), null)
+
+  // 前缀相同但不是同一个目录 —— 用 relative 判断而不是比字符串,就是为了挡这个
+  eq('同级的 .claude-backup', inScope('.claude-backup/settings.json'), null)
+  eq('同级的 .claudex', inScope('.claudex/x.json'), null)
+
+  // 绝对路径也不能绕过
+  eq('绝对路径', inScope(process.platform === 'win32' ? 'C:\\Windows\\win.ini' : '/etc/passwd'), null)
+}
+
+console.log('\nclaudedir —— JSON 写坏要在保存前拦住并指出行号')
+{
+  eq('合法 JSON 放行', validateJson('{"a":1}'), null)
+  eq('合法 JSON(带换行)放行', validateJson('{\n  "a": 1\n}'), null)
+
+  const bad = validateJson('{\n  "permissions": {\n    "allow": [,\n  }\n}')
+  eq('坏 JSON 被拦住', bad !== null, true)
+  eq('给出的行号大于 1', (bad?.line ?? 0) > 1, true)
+
+  const empty = validateJson('')
+  eq('空内容也算坏', empty !== null, true)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

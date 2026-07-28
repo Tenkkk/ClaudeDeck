@@ -3,11 +3,13 @@ import type {
   AppConfig,
   AskAnswer,
   ChatEvent,
+  ClaudeEntry,
   ContextUsage,
   DoctorReport,
   EffortLevel,
   ModelOption,
   PermissionMode,
+  SaveResult,
   SessionListItem,
   SlashCommandItem,
   TranscriptItem,
@@ -50,6 +52,13 @@ const api = {
       ipcRenderer.invoke('sessions:tag', sessionId, tag),
     fork: (sessionId: string, title?: string): Promise<string> =>
       ipcRenderer.invoke('sessions:fork', sessionId, title),
+  },
+  claude: {
+    list: (): Promise<ClaudeEntry[]> => ipcRenderer.invoke('claude:list'),
+    read: (projectPath: string, relPath: string): Promise<string | null> =>
+      ipcRenderer.invoke('claude:read', projectPath, relPath),
+    write: (projectPath: string, relPath: string, content: string): Promise<SaveResult> =>
+      ipcRenderer.invoke('claude:write', projectPath, relPath, content),
   },
   app: {
     versions: (): Promise<Versions> => ipcRenderer.invoke('app:versions'),

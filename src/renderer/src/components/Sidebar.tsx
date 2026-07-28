@@ -5,6 +5,7 @@ import { relativeTime } from '../lib/path.js'
 import {
   THEME_OPTIONS,
   type Project,
+  type ClaudeEntry,
   type SessionListItem,
   type ThemePref,
   type UsageInfo,
@@ -37,6 +38,11 @@ export default function Sidebar({
   onManageProjects,
   theme,
   onTheme,
+  claudeEntries,
+  openFile,
+  onToggleClaude,
+  claudeOpen,
+  onOpenFile,
 }: {
   projects: Project[]
   sessionsByProject: Record<string, SessionListItem[]>
@@ -55,6 +61,11 @@ export default function Sidebar({
   onManageProjects: () => void
   theme: ThemePref
   onTheme: (t: ThemePref) => void
+  claudeEntries: ClaudeEntry[]
+  openFile: string | null
+  onToggleClaude: () => void
+  claudeOpen: boolean
+  onOpenFile: (relPath: string) => void
 }): React.JSX.Element {
   const [themeOpen, setThemeOpen] = useState(false)
   return (
@@ -130,14 +141,49 @@ export default function Sidebar({
 
               {open && (
                 <>
-                  {/* .claude 节点挂在项目名和会话之间 · §10。中栏在第 7 步实现 */}
-                  <button className="claude-node" disabled title="读写中栏在第 7 步实现">
-                    <span className="caret">
-                      <CaretIcon />
-                    </span>
-                    <span className="mono">.claude</span>
-                    <span className="hint">配置</span>
-                  </button>
+                  {/* .claude 节点挂在项目名和会话之间 · §10 */}
+                  {project.path === activeWorkspace && (
+                    <>
+                      <button
+                        className="claude-node"
+                        aria-expanded={claudeOpen}
+                        onClick={onToggleClaude}
+                        title="读写这个项目的 .claude 配置"
+                      >
+                        <span className="caret">
+                          <CaretIcon />
+                        </span>
+                        <span className="mono">.claude</span>
+                        <span className="hint">配置</span>
+                      </button>
+
+                      {claudeOpen &&
+                        claudeEntries.map((entry) =>
+                          entry.kind === 'dir' ? (
+                            <div key={entry.path} className="claude-dir">
+                              <span className="mono">{entry.name}/</span>
+                              <span className="count">{entry.count}</span>
+                            </div>
+                          ) : (
+                            <button
+                              key={entry.path}
+                              className="claude-file"
+                              aria-current={entry.path === openFile}
+                              onClick={() => onOpenFile(entry.path)}
+                              title={entry.path}
+                            >
+                              <span className="mono">{entry.name}</span>
+                              {/* 打开的文件用中性填充 + 「打开中」,不抢会话的陶土选中态 ——
+                                  两个「当前」必须能分开 */}
+                              {entry.path === openFile && <span className="hint">打开中</span>}
+                              {entry.atRoot && entry.path !== openFile && (
+                                <span className="hint">项目根</span>
+                              )}
+                            </button>
+                          ),
+                        )}
+                    </>
+                  )}
 
                   {sessions.length === 0 && (
                     <div className="hint session-empty">这个项目下还没有会话。</div>

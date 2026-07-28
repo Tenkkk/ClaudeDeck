@@ -10,7 +10,7 @@
  * 会产生少量真实 API 调用。
  */
 import { _electron as electron } from 'playwright'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -63,6 +63,14 @@ writeFileSync(
   ),
 )
 
+// 预置 .claude,让配置栏有内容可开 —— §10 的范围就是这里加根目录的 CLAUDE.md
+mkdirSync(join(WORKSPACE, '.claude'), { recursive: true })
+writeFileSync(
+  join(WORKSPACE, '.claude', 'settings.local.json'),
+  JSON.stringify({ permissions: { allow: ['Bash(npm run build)'], deny: [] } }, null, 2),
+)
+writeFileSync(join(WORKSPACE, 'CLAUDE.md'), '# 测试用\n')
+
 console.log(`用户数据:${USER_DATA}\n工作目录:${WORKSPACE}\n`)
 
 const app = await electron.launch({
@@ -75,7 +83,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/6] 进程桥接')
+  console.log('[0/7] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -91,7 +99,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/6] 聊天')
+  console.log('\n[1/7] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -108,7 +116,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/6] 切换模型')
+  console.log('\n[2/7] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -147,7 +155,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/6] 会话列表与切换')
+  console.log('\n[3/7] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -189,7 +197,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/6] 工具行')
+  console.log('\n[4/7] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -239,7 +247,7 @@ try {
   check('每条消息都带复制动作', copyBtns.length > 0 && copyBtns.every((t) => t === '复制'), `${copyBtns.length} 个`)
 
   // ---- 斜杠命令面板 · §15 -------------------------------------------------
-  console.log('\n[5/6] 斜杠命令面板')
+  console.log('\n[5/7] 斜杠命令面板')
   await settle(page)
   await page.fill('.composer textarea', '/')
   const opened = await page
@@ -281,8 +289,66 @@ try {
     await page.waitForTimeout(200)
   }
 
+  // ---- .claude 配置栏 · §10 ----------------------------------------------
+  // 这一节纯文件读写,不产生 API 调用
+  console.log('\n[6/7] .claude 配置栏')
+  await page.click('.claude-node')
+  await page.waitForSelector('.claude-file', { timeout: 10_000 })
+  const files = await page.$$eval('.claude-file .mono', (n) => n.map((e) => e.textContent?.trim()))
+  check(
+    '列出 .claude 下的文件与根的 CLAUDE.md',
+    files.includes('settings.local.json') && files.includes('CLAUDE.md'),
+    files.join(' / '),
+  )
+
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('.claude-file')].find((b) =>
+      b.textContent?.includes('settings.local.json'),
+    )
+    btn?.click()
+  })
+  await page.waitForSelector('.midcol-text', { timeout: 10_000 })
+  const loaded = await page.$eval('.midcol-text', (e) => e.value)
+  check('中栏载入了文件内容', loaded.includes('permissions'), `${loaded.length} 字`)
+  check('三栏布局生效', (await page.$$eval('.shell.with-mid', (n) => n.length)) === 1)
+  check(
+    '打开的文件用中性态,不抢会话的陶土选中态',
+    (await page.$$eval('.claude-file[aria-current="true"]', (n) => n.length)) === 1,
+  )
+
+  // 改一笔 → 出脏点 → Ctrl S 保存 → 脏点消失 → 磁盘上真的变了
+  await page.fill(
+    '.midcol-text',
+    JSON.stringify({ permissions: { allow: ['Bash(ls)'], deny: [] } }, null, 2),
+  )
+  await page.waitForSelector('.dirty-dot', { timeout: 5_000 })
+  check('改动后出现脏点', true)
+  await page.keyboard.press('Control+s')
+  await page.waitForFunction(() => !document.querySelector('.dirty-dot'), { timeout: 10_000 })
+  check('Ctrl S 保存后脏点消失', true)
+
+  const onDisk = readFileSync(join(WORKSPACE, '.claude', 'settings.local.json'), 'utf8')
+  check('内容真的写进了磁盘', onDisk.includes('Bash(ls)'), onDisk.replace(/\s+/g, ' ').slice(0, 60))
+
+  // 写坏 JSON:保存前就该被拦住并指出行号,而且不能落盘
+  await page.fill('.midcol-text', '{\n  "permissions": {\n    "allow": [,\n  }\n}')
+  await page.keyboard.press('Control+s')
+  await page.waitForSelector('.midcol-error', { timeout: 10_000 })
+  const errText = (await page.textContent('.midcol-error')) ?? ''
+  check('坏 JSON 被拦住并指出行号', /第 \d+ 行/.test(errText), errText.slice(0, 70))
+  const stillOnDisk = readFileSync(join(WORKSPACE, '.claude', 'settings.local.json'), 'utf8')
+  check('坏 JSON 没有落盘', stillOnDisk.includes('Bash(ls)'))
+
+  // 有未保存改动时关闭要拦一次
+  await page.click('.midcol-head .icon-btn')
+  await page.waitForSelector('.midcol-confirm', { timeout: 10_000 })
+  check('未保存时关闭会拦一次', true)
+  await page.click('.midcol-confirm .row button:nth-child(2)')
+  await page.waitForFunction(() => !document.querySelector('.midcol'), { timeout: 10_000 })
+  check('选「不保存」后中栏关闭', true)
+
   // ---- 会话右键菜单 · §08 ------------------------------------------------
-  console.log('\n[6/6] 会话右键菜单')
+  console.log('\n[7/7] 会话右键菜单')
   await page.click('.sidebar-scroll .session-row', { button: 'right' })
   await page.waitForSelector('.ctx', { timeout: 10_000 })
   const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>

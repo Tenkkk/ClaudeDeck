@@ -20,13 +20,16 @@ import {
   updateConfig,
 } from './config.js'
 import { installCli, runDoctor } from './doctor.js'
+import { listClaudeEntries, readClaudeFile, writeClaudeFile } from './claudedir.js'
 import { annotateSources } from './commands.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   AskAnswer,
   ChatEvent,
+  ClaudeEntry,
   EffortLevel,
   PermissionMode,
+  SaveResult,
   SessionListItem,
   SlashCommandItem,
   ToolRow,
@@ -238,6 +241,24 @@ function registerIpc(): void {
 
   /** 在资源管理器里打开项目目录(§08 右键菜单)。 */
   ipcMain.handle('shell:openProject', (_e, path: string) => shell.openPath(path))
+
+  // .claude 配置栏 · §10。范围锁在 claudedir.ts 里,渲染层传来的路径一律不信。
+  ipcMain.handle('claude:list', (): ClaudeEntry[] => {
+    const path = getConfig().activeWorkspace
+    return path ? listClaudeEntries(path) : []
+  })
+
+  // 读写都显式收 projectPath:如果按「当前项目」解析,用户切了项目而编辑器
+  // 还开着,保存就会落到另一个项目的同名文件上。
+  ipcMain.handle('claude:read', (_e, projectPath: string, relPath: string): string | null =>
+    readClaudeFile(projectPath, relPath),
+  )
+
+  ipcMain.handle(
+    'claude:write',
+    (_e, projectPath: string, relPath: string, content: string): SaveResult =>
+      writeClaudeFile(projectPath, relPath, content),
+  )
 
   ipcMain.handle('chat:open', (_e, sessionId?: string) => {
     openSession(sessionId)

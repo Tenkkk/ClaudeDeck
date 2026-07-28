@@ -202,6 +202,26 @@ export interface SlashCommandItem {
   source: 'builtin' | 'project' | 'skill'
 }
 
+/**
+ * `.claude` 配置栏里的一项 · §10。范围只到项目的 .claude/ 和根的 CLAUDE.md。
+ */
+export interface ClaudeEntry {
+  /** 相对项目根的路径,正斜杠 */
+  path: string
+  name: string
+  kind: 'dir' | 'file'
+  size?: number
+  count?: number
+  /** 项目根的 CLAUDE.md,不在 .claude/ 里但归这一栏管 */
+  atRoot?: boolean
+}
+
+export type SaveResult =
+  | { ok: true }
+  | { ok: false; reason: 'out-of-scope' }
+  | { ok: false; reason: 'invalid-json'; line: number; message: string }
+  | { ok: false; reason: 'write-failed'; message: string }
+
 export interface ModelOption {
   value: string
   displayName: string

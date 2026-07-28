@@ -5,6 +5,7 @@ import ControlBar from './components/ControlBar.js'
 import ElicitationCard from './components/ElicitationCard.js'
 import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
+import MidColumn from './components/MidColumn.js'
 import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
@@ -18,6 +19,7 @@ import {
   type ContextUsage,
   type DoctorReport,
   type AskCard as AskCardData,
+  type ClaudeEntry,
   type ElicitationCard as ElicitationCardData,
   type PlanCard as PlanCardData,
   type EffortLevel,
@@ -88,6 +90,11 @@ export default function App(): React.JSX.Element {
   const [effortSwitching, setEffortSwitching] = useState(false)
   const [commands, setCommands] = useState<SlashCommandItem[]>([])
   const [paletteIndex, setPaletteIndex] = useState(0)
+  /** .claude 配置栏 · §10 */
+  const [claudeOpen, setClaudeOpen] = useState(false)
+  const [claudeEntries, setClaudeEntries] = useState<ClaudeEntry[]>([])
+  const [openFile, setOpenFile] = useState<{ project: string; path: string } | null>(null)
+  const [fileDirty, setFileDirty] = useState(false)
   const transcriptRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -204,6 +211,30 @@ export default function App(): React.JSX.Element {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [draft])
 
+  // 换了项目就收起 .claude 树(它列的是上一个项目的内容)。
+  //
+  // 开着的文件**只在没有未保存改动时**才自动关 —— 有改动就留着,
+  // 它记着自己属于哪个项目、保存也走那个项目,所以留着是安全的;
+  // 头部的项目名会告诉用户这份文件不属于当前项目。
+  //
+  // fileDirty 必须走 ref 读:放进依赖数组的话,保存让它从 true 变 false
+  // 会把这个 effect 再触发一次,于是「一保存文件就自己关了」。
+  const dirtyRef = useRef(false)
+  dirtyRef.current = fileDirty
+  const prevProject = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    const project = config?.activeWorkspace ?? null
+    if (prevProject.current === undefined) {
+      prevProject.current = project
+      return
+    }
+    if (prevProject.current === project) return
+    prevProject.current = project
+    setClaudeOpen(false)
+    setClaudeEntries([])
+    if (!dirtyRef.current) setOpenFile(null)
+  }, [config?.activeWorkspace])
+
   /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
   async function openSession(projectPath: string, sessionId: string): Promise<void> {
     setStreaming('')
@@ -280,7 +311,7 @@ export default function App(): React.JSX.Element {
   const contextWarn = (context?.percentage ?? 0) >= CONTEXT_WARN_AT
 
   return (
-    <div className="shell">
+    <div className={`shell${openFile ? ' with-mid' : ''}`}>
       <Sidebar
         projects={config?.projects ?? []}
         sessionsByProject={sessionsByProject}
@@ -308,9 +339,32 @@ export default function App(): React.JSX.Element {
           await refreshSessions()
         }}
         onManageProjects={() => setPhase('projects')}
+        claudeEntries={claudeEntries}
+        openFile={openFile?.path ?? null}
+        claudeOpen={claudeOpen}
+        onToggleClaude={async () => {
+          const next = !claudeOpen
+          setClaudeOpen(next)
+          if (next) setClaudeEntries(await window.api.claude.list())
+        }}
+        onOpenFile={(relPath) =>
+          config?.activeWorkspace && setOpenFile({ project: config.activeWorkspace, path: relPath })
+        }
         theme={config?.theme ?? 'system'}
         onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
       />
+
+      {openFile && (
+        <MidColumn
+          projectPath={openFile.project}
+          projectName={
+            config?.projects.find((p) => p.path === openFile.project)?.name ?? openFile.project
+          }
+          relPath={openFile.path}
+          onClose={() => setOpenFile(null)}
+          onDirtyChange={setFileDirty}
+        />
+      )}
 
       <main className="main">
         {/* 归属行 · §05:项目 / 会话标题 / 上下文百分比 */}

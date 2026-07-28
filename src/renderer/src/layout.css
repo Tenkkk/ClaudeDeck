@@ -377,6 +377,198 @@ kbd,
   overflow: hidden;
 }
 
+/* §10:中栏打开时 264 + 320 + 剩下的 */
+.shell.with-mid {
+  grid-template-columns: var(--w-sidebar) var(--w-midcol) 1fr;
+}
+
+/* ---- .claude 配置栏 · §10 ---- */
+
+.claude-dir,
+.claude-file {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  width: calc(100% - var(--s26));
+  margin-left: var(--s26);
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--r-inline);
+  padding: var(--s4) var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+}
+
+.claude-dir {
+  color: var(--muted);
+}
+
+.claude-dir .count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+}
+
+.claude-file:hover {
+  background: var(--bg);
+}
+
+/* 打开的文件用**中性**填充 —— 不抢会话的陶土选中态。
+   两个「当前」必须能分开:一个是当前会话,一个是当前打开的文件。 */
+.claude-file[aria-current='true'] {
+  background: var(--bubble);
+  border-color: var(--border);
+}
+
+.claude-file .hint {
+  margin-left: auto;
+}
+
+.midcol {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  min-height: 0;
+  position: relative;
+  background: var(--raised);
+  border-right: 1px solid var(--border);
+}
+
+.midcol-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s12) var(--s8) var(--s12) var(--s16);
+  border-bottom: 1px solid var(--border);
+}
+
+.midcol-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  min-width: 0;
+}
+
+.midcol-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-l);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 改动只用这颗点说 —— 底部没有提示条,也没有保存按钮 */
+.dirty-dot {
+  flex: none;
+  width: var(--s6);
+  height: var(--s6);
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.midcol-crumb {
+  margin-left: auto;
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.midcol-error {
+  padding: var(--s8) var(--s16);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-size: var(--text-ui-s);
+  line-height: 1.6;
+  border-bottom: 1px solid var(--border);
+}
+
+.midcol-body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.midcol-gutter {
+  overflow: hidden;
+  padding: var(--s12) var(--s8) var(--s12) var(--s16);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  line-height: 1.7;
+  color: var(--muted-2);
+  user-select: none;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.midcol-text {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  resize: none;
+  padding: var(--s12) var(--s12) var(--s12) var(--s8);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  line-height: 1.7;
+  color: var(--ink);
+  overflow: auto;
+  white-space: pre;
+}
+
+.midcol-text:focus {
+  outline: none;
+  border: none;
+}
+
+/* 关掉或切走时才拦这一次 */
+.midcol-confirm {
+  position: absolute;
+  left: var(--s12);
+  right: var(--s12);
+  bottom: var(--s12);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-bubble);
+  box-shadow: var(--shadow-popover);
+  padding: var(--s16);
+  display: grid;
+  gap: var(--s6);
+}
+
+.midcol-confirm p {
+  margin: 0;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.midcol-confirm .row {
+  justify-content: flex-end;
+}
+
+/* §09:940 时中栏改成盖在对话区上的浮层 ——
+   264 + 320 之后只剩 356px,气泡就没法读了 */
+@media (max-width: 1040px) {
+  .shell.with-mid {
+    grid-template-columns: var(--w-sidebar) 1fr;
+  }
+
+  .midcol {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--w-sidebar);
+    width: var(--w-midcol);
+    z-index: 25;
+    box-shadow: var(--shadow-popover);
+  }
+}
+
 /* ---- 侧栏 ---- */
 
 .sidebar {
