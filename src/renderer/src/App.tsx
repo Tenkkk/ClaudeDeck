@@ -10,6 +10,9 @@ import MidColumn from './components/MidColumn.js'
 import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
+import Resizer from './components/Resizer.js'
+import { clampMidcol, clampSidebar, loadWidths, saveWidths } from './lib/columns.js'
+import Thinking from './components/Thinking.js'
 import ToolRow from './components/ToolRow.js'
 import Loading from './screens/Loading.js'
 import Onboarding from './screens/Onboarding.js'
@@ -31,6 +34,7 @@ import {
   type SlashCommandItem,
   type ToolRow as ToolRowData,
   type TranscriptItem,
+  type TurnStatus,
   type UsageInfo,
   type Versions,
 } from '../../shared/ipc.js'
@@ -45,6 +49,18 @@ interface PendingPermission {
 
 /** 上下文过 80% 转警示色 —— 自动压缩唯一的预告 · §06 */
 const CONTEXT_WARN_AT = 80
+
+/**
+ * 由界面自己处理的斜杠命令。
+ *
+ * 这些在终端里也不是发给 agent 的,是 CLI 界面层拦下来自己弹选择器。
+ * SDK 的 supportedCommands() 会把它们列出来,但把它们当消息发过去不会有
+ * 任何反应 —— 所以这里必须拦一道,否则就是发出去一条石沉大海的消息。
+ */
+const UI_COMMANDS: Record<string, 'model' | 'effort'> = {
+  '/model': 'model',
+  '/effort': 'effort',
+}
 
 /**
  * §06:Claude 会反复写 TodoWrite,同一次会话里只保留一张卡、原地更新,
@@ -92,6 +108,11 @@ export default function App(): React.JSX.Element {
   const [effortSwitching, setEffortSwitching] = useState(false)
   const [commands, setCommands] = useState<SlashCommandItem[]>([])
   const [paletteIndex, setPaletteIndex] = useState(0)
+  const [controlRequest, setControlRequest] = useState<'model' | 'effort' | null>(null)
+  const [widths, setWidths] = useState(loadWidths)
+  const [turnStartedAt, setTurnStartedAt] = useState(0)
+  const [turnStatus, setTurnStatus] = useState<TurnStatus>(null)
+  const [outputTokens, setOutputTokens] = useState(0)
   /** .claude 配置栏 · §10 */
   const [claudeOpen, setClaudeOpen] = useState(false)
   const [claudeEntries, setClaudeEntries] = useState<ClaudeEntry[]>([])
@@ -162,6 +183,10 @@ export default function App(): React.JSX.Element {
       if (event.type === 'session') {
         setActiveSession(event.sessionId)
         activeSessionRef.current = event.sessionId
+        // 一发出去侧栏就该多出这条,而不是等这一轮答完。session_id 在本轮
+        // 第一条消息上就有了,这时 SDK 的 store 里已经落了盘,列得出来。
+        // 标题是 Claude 生成的,会晚一点变 —— done 时再刷一次盖上去。
+        void refreshSessions()
       } else if (event.type === 'delta') {
         setStreaming((s) => s + event.text)
       } else if (event.type === 'tool') {
@@ -181,6 +206,10 @@ export default function App(): React.JSX.Element {
         setPlan(event.card)
       } else if (event.type === 'tasks') {
         setTasks(event.tasks)
+      } else if (event.type === 'status') {
+        setTurnStatus(event.status)
+      } else if (event.type === 'progress') {
+        setOutputTokens(event.outputTokens)
       } else if (event.type === 'unknownDialog') {
         setUnknownDialog(event.notice.dialogKind)
       } else if (event.type === 'permission') {
@@ -298,10 +327,25 @@ export default function App(): React.JSX.Element {
   async function send(): Promise<void> {
     const text = draft.trim()
     if (!text || busy) return
+
+    // 这几条是界面自己的命令,不是给 agent 的。终端里 /model 由 CLI 的界面层
+    // 处理,发给 agent 只会石沉大海 —— 命令面板拦得住敲回车,拦不住点「发送」。
+    // 认出来就直接把对应的浮层点开,和终端里敲 /model 得到的结果一致。
+    const ui = UI_COMMANDS[text.toLowerCase()]
+    if (ui) {
+      setDraft('')
+      setControlRequest(ui)
+      return
+    }
+
     setDraft('')
     setTranscript((t) => [...t, { kind: 'user', text, ts: Date.now() }])
     setBusy(true)
     setError(null)
+    // 等待态的计时与计数按轮清零
+    setTurnStartedAt(Date.now())
+    setTurnStatus(null)
+    setOutputTokens(0)
     await window.api.chat.send(text)
   }
 
@@ -347,8 +391,38 @@ export default function App(): React.JSX.Element {
     : []
   const contextWarn = (context?.percentage ?? 0) >= CONTEXT_WARN_AT
 
+  // 窗口左边缘就是 shell 的左边缘(没有更外层的容器),所以 clientX 直接
+  // 就是侧栏宽度;中栏那道线要先减掉侧栏。
+  function resizeSidebar(px: number): void {
+    const next = clampSidebar(px, {
+      viewport: window.innerWidth,
+      midcol: widths.midcol,
+      midOpen: openFile !== null,
+    })
+    const w = { ...widths, sidebar: next }
+    setWidths(w)
+    saveWidths(w)
+  }
+
+  function resizeMidcol(px: number): void {
+    const next = clampMidcol(px, { viewport: window.innerWidth, sidebar: widths.sidebar })
+    const w = { ...widths, midcol: next }
+    setWidths(w)
+    saveWidths(w)
+  }
+
   return (
-    <div className={`shell${openFile ? ' with-mid' : ''}`}>
+    <div
+      className={`shell${openFile ? ' with-mid' : ''}`}
+      // 覆盖 styles.css 里的默认值。写在这一层而不是每栏各写各的,
+      // 是因为中栏关着时布局也要跟着变,统一由 grid 的模板表达。
+      style={
+        {
+          '--w-sidebar': `${widths.sidebar}px`,
+          '--w-midcol': `${widths.midcol}px`,
+        } as React.CSSProperties
+      }
+    >
       <Sidebar
         projects={config?.projects ?? []}
         sessionsByProject={sessionsByProject}
@@ -390,6 +464,22 @@ export default function App(): React.JSX.Element {
         theme={config?.theme ?? 'system'}
         onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
       />
+
+      {/* 两道竖线都能拖 · 夹逼规则见 lib/columns */}
+      <Resizer
+        className="resizer-sidebar"
+        label="调整侧栏宽度"
+        onDrag={(x) => resizeSidebar(x)}
+        onNudge={(d) => resizeSidebar(widths.sidebar + d)}
+      />
+      {openFile && (
+        <Resizer
+          className="resizer-midcol"
+          label="调整配置栏宽度"
+          onDrag={(x) => resizeMidcol(x - widths.sidebar)}
+          onNudge={(d) => resizeMidcol(widths.midcol + d)}
+        />
+      )}
 
       {openFile && (
         <MidColumn
@@ -450,6 +540,16 @@ export default function App(): React.JSX.Element {
                 <span className="stream-caret" />
               </div>
             </div>
+          )}
+
+          {/* 忙着但还没开口的那段空白 —— 至少要能看出它还活着 */}
+          {busy && (
+            <Thinking
+              since={turnStartedAt}
+              status={turnStatus}
+              outputTokens={outputTokens}
+              streaming={streaming.length > 0}
+            />
           )}
 
           {/* §06 权限卡:行内、不弹窗 —— 弹窗会把上文遮住,而你要看的正是上文。
@@ -639,6 +739,8 @@ export default function App(): React.JSX.Element {
               busy={busy}
               effortSwitching={effortSwitching}
               canSend={Boolean(draft.trim())}
+              requestOpen={controlRequest}
+              onRequestHandled={() => setControlRequest(null)}
               onMode={(v) => {
                 void window.api.chat.setPermissionMode(v)
                 setConfig((c) => (c ? { ...c, permissionMode: v } : c))

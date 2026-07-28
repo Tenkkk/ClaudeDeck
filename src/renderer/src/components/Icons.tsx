@@ -30,6 +30,31 @@ export function FolderIcon({ size = 13, className }: Props): React.JSX.Element {
   )
 }
 
+/**
+ * 齿轮 —— 侧栏底部的设置入口。
+ *
+ * 八齿画法:一个圆心 + 八根短辐条,比描一圈齿廓的路径在 13px 下清楚得多
+ * (齿廓那种画法缩到这个尺寸会糊成一团)。
+ */
+export function GearIcon({ size = 14, className }: Props): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="2.4" />
+      <path d="M8 1.6v1.8M8 12.6v1.8M14.4 8h-1.8M3.4 8H1.6M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3M12.5 12.5l-1.3-1.3M4.8 4.8 3.5 3.5" />
+    </svg>
+  )
+}
+
 export function SearchIcon({ size = 14, className }: Props): React.JSX.Element {
   return (
     <svg

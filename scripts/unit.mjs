@@ -12,6 +12,7 @@ import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
 import { askCardFromPayload, askResult, planCardFromPayload } from '../src/main/dialogs.ts'
 import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 import { bundledExecutablePath } from '../src/main/binary.ts'
+import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
 
 let passed = 0
 let failed = 0
@@ -316,6 +317,30 @@ console.log('\nclaudedir —— JSON 写坏要在保存前拦住并指出行号'
   // 所以这里只看结尾的文件名,不挑分隔符
   eq('非 Windows 不加 .exe', /[\\/]claude$/.test(mac), true)
   eq('非 Windows 的包名也对', mac.includes('claude-agent-sdk-darwin-arm64'), true)
+}
+
+// ---- 三栏宽度的夹逼 --------------------------------------------------------
+{
+  const wide = { viewport: 1600, midcol: MIDCOL.def, midOpen: false }
+  eq('正常范围内原样返回', clampSidebar(300, wide), 300)
+  eq('拖过窄夹到下限', clampSidebar(40, wide), SIDEBAR.min)
+  eq('拖过宽夹到上限', clampSidebar(9999, wide), SIDEBAR.max)
+
+  // 中栏开着时,侧栏的活动余地要相应变小
+  const withMid = { viewport: 900, midcol: 320, midOpen: true }
+  eq('中栏开着时给对话区留够', clampSidebar(9999, withMid), 900 - 320 - CHAT_MIN)
+
+  // 窗口窄到怎么排都不够时,宁可挤对话区,也不能算出比下限还小的宽度
+  eq('窗口过窄时不返回负值', clampSidebar(300, { viewport: 500, midcol: 320, midOpen: true }), SIDEBAR.min)
+
+  eq('中栏同样夹在下限', clampMidcol(10, { viewport: 1600, sidebar: 264 }), MIDCOL.min)
+  eq('中栏同样夹在上限', clampMidcol(9999, { viewport: 1600, sidebar: 264 }), MIDCOL.max)
+  eq(
+    '中栏也要给对话区留够',
+    clampMidcol(9999, { viewport: 1000, sidebar: 264 }),
+    1000 - 264 - CHAT_MIN,
+  )
+  eq('返回整数像素', Number.isInteger(clampMidcol(333.7, { viewport: 1600, sidebar: 264 })), true)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

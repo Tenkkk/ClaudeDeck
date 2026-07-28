@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CaretIcon, CheckIcon, FolderIcon, PlusIcon, SearchIcon } from './Icons.js'
+import { CaretIcon, CheckIcon, FolderIcon, GearIcon, PlusIcon, SearchIcon } from './Icons.js'
 import Popover from './Popover.js'
 import { relativeTime } from '../lib/path.js'
 import {
@@ -255,22 +255,29 @@ export default function Sidebar({
             </span>
           </div>
         )}
-        {/* §16:主题开关挂在版本行上 —— 不为一个三选一再造一屏设置界面 */}
+        {/*
+          §16:设置就一个三选一加一行版本号,不值得单开一屏。入口从版本文字
+          换成齿轮 —— 齿轮一眼就是「设置」,而一串版本号不是,原先那行整条可点
+          却没有任何东西在说它可点。花费挪进浮窗,信息不丢。
+        */}
         <div className="version-slot">
-          <button
-            className="version-row"
-            aria-expanded={themeOpen}
-            title="主题与关于"
-            onClick={() => setThemeOpen((v) => !v)}
-          >
+          <div className="version-row">
             <span>
               {versions?.app ?? '—'}
               {versions?.cli ? ` · CLI ${versions.cli}` : ''}
             </span>
-            {usage && <span>本会话 ${usage.sessionCostUsd.toFixed(2)}</span>}
-          </button>
+            <button
+              className="icon-btn settings-btn"
+              aria-expanded={themeOpen}
+              aria-label="设置"
+              title="设置"
+              onClick={() => setThemeOpen((v) => !v)}
+            >
+              <GearIcon size={14} />
+            </button>
+          </div>
 
-          <Popover open={themeOpen} onClose={() => setThemeOpen(false)} width={200}>
+          <Popover open={themeOpen} onClose={() => setThemeOpen(false)} align="right" width={200}>
             <div className="pop-group">主题</div>
             {THEME_OPTIONS.map((t) => (
               <button
@@ -292,6 +299,7 @@ export default function Sidebar({
               ClaudeDeck {versions?.app ?? '—'}
               {versions?.cli ? ` · Claude Code ${versions.cli}` : ''}
             </div>
+            {usage && <div className="about-row">本会话 ${usage.sessionCostUsd.toFixed(2)}</div>}
           </Popover>
         </div>
       </div>

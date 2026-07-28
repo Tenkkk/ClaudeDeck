@@ -29,6 +29,20 @@ async function send(page) {
   await page.click('.composer [data-state="send"]')
 }
 
+/** 在模型弹层里按显示名挑一个。弹层没开就先点开。 */
+async function pickModel(page, label) {
+  const open = await page.$$eval('.pop-desc', (n) => n.length)
+  if (open === 0) await page.click('[data-control="model"]')
+  await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
+  await page.evaluate((l) => {
+    const row = [...document.querySelectorAll('.popover .pop-row')].find((r) =>
+      r.querySelector('.pop-title')?.textContent?.includes(l),
+    )
+    if (row) row.click()
+  }, label)
+  await page.waitForTimeout(400)
+}
+
 let passed = 0
 let failed = 0
 function check(label, ok, detail = '') {
@@ -83,7 +97,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/8] 进程桥接')
+  console.log('[0/9] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -99,7 +113,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/8] 聊天')
+  console.log('\n[1/9] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -116,7 +130,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/8] 切换模型')
+  console.log('\n[2/9] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -155,7 +169,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/8] 会话列表与切换')
+  console.log('\n[3/9] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -197,7 +211,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/8] 工具行')
+  console.log('\n[4/9] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -250,7 +264,7 @@ try {
   check('每条消息都带复制动作', copyBtns.length > 0, `${copyBtns.length} 个`)
 
   // ---- 斜杠命令面板 · §15 -------------------------------------------------
-  console.log('\n[5/8] 斜杠命令面板')
+  console.log('\n[5/9] 斜杠命令面板')
   await settle(page)
   await page.fill('.composer textarea', '/')
   const opened = await page
@@ -293,7 +307,7 @@ try {
   }
 
   // ---- 从这条重答:分支与文件回退 · §12 -----------------------------------
-  console.log('\n[6/8] 分支与文件回退')
+  console.log('\n[6/9] 分支与文件回退')
   // 消息 id 是每轮结束后从 store 重载才有的 —— 直播流里的用户消息不带 uuid
   const forkable = await page
     .waitForFunction(
@@ -337,7 +351,7 @@ try {
 
   // ---- .claude 配置栏 · §10 ----------------------------------------------
   // 这一节纯文件读写,不产生 API 调用
-  console.log('\n[7/8] .claude 配置栏')
+  console.log('\n[7/9] .claude 配置栏')
   await page.click('.claude-node')
   await page.waitForSelector('.claude-file', { timeout: 10_000 })
   const files = await page.$$eval('.claude-file .mono', (n) => n.map((e) => e.textContent?.trim()))
@@ -394,7 +408,7 @@ try {
   check('选「不保存」后中栏关闭', true)
 
   // ---- 会话右键菜单 · §08 ------------------------------------------------
-  console.log('\n[8/8] 会话右键菜单')
+  console.log('\n[8/9] 会话右键菜单')
   await page.click('.sidebar-scroll .session-row', { button: 'right' })
   await page.waitForSelector('.ctx', { timeout: 10_000 })
   const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>
@@ -448,6 +462,108 @@ try {
     .then(() => true)
     .catch(() => false)
   check('确认后那条会话真的从列表消失', gone, doomed)
+
+  // ---- 实测反馈的七项 ------------------------------------------------------
+  // 这一节全是用户装完之后逐条指出来的问题。钉在这儿,免得下次又要靠手点才发现。
+  console.log('\n[9/9] 实测反馈的七项')
+
+  // 1 模型弹层:有描述,没有那列没意义的编号
+  await page.click('[data-control="model"]')
+  await page.waitForSelector('.pop-row', { timeout: 10_000 })
+  const modelDescs = await page.$$eval('.pop-desc', (n) => n.map((e) => e.textContent?.trim() ?? ''))
+  check('模型带上了描述', modelDescs.length > 0 && modelDescs[0].length > 0, modelDescs[0] ?? '')
+  const indexCol = await page.$$eval('.pop-index', (n) => n.length)
+  check('去掉了 CLI 的键盘序号', indexCol === 0, `${indexCol} 个`)
+
+  // 3a 档位由模型决定:Haiku 的 ModelInfo 里没有 supportedEffortLevels,
+  //    也就是它根本不支持努力程度,控件该是禁用的而不是画五个点让人白点。
+  await pickModel(page, 'Haiku')
+  const effortDisabled = await page.$eval('[data-control="effort"]', (e) => e.disabled)
+  check('选中 Haiku 时努力控件禁用', effortDisabled === true)
+
+  // 3b 换回支持努力的模型,滑块要能拖
+  await pickModel(page, 'Default')
+  const effortBack = await page.$eval('[data-control="effort"]', (e) => e.disabled)
+  check('换回 Default 后努力控件恢复', effortBack === false)
+
+  await page.click('[data-control="effort"]')
+  await page.waitForSelector('.effort-track', { timeout: 10_000 })
+  const track = await page.$('.effort-track')
+  const box = await track.boundingBox()
+  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 8 })
+  const draggedTo = await page.$eval('.effort-track', (e) => e.getAttribute('aria-valuenow'))
+  await page.mouse.up()
+  check('努力滑块能拖动', draggedTo === '5', `拖到第 ${draggedTo} 档`)
+
+  // 2 两栏之间的竖线能拖,且拖不过下限
+  const beforeW = await page.$eval('.shell', (e) => e.style.getPropertyValue('--w-sidebar'))
+  const rb = await (await page.$('.resizer-sidebar')).boundingBox()
+  await page.mouse.move(rb.x + rb.width / 2, rb.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(rb.x + 120, rb.y + 200, { steps: 6 })
+  await page.mouse.up()
+  const afterW = await page.$eval('.shell', (e) => e.style.getPropertyValue('--w-sidebar'))
+  check('侧栏竖线能拖动', beforeW !== afterW, `${beforeW} → ${afterW}`)
+  // 手柄跟着侧栏移动了,坐标必须重新取 —— 拿旧坐标去按,按的是空处,
+  // 那样这条断言只会空过一遍
+  const rb2 = await (await page.$('.resizer-sidebar')).boundingBox()
+  await page.mouse.move(rb2.x + rb2.width / 2, rb2.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(rb2.x - 400, rb2.y + 200, { steps: 6 })
+  await page.mouse.up()
+  const floored = await page.$eval('.shell', (e) => e.style.getPropertyValue('--w-sidebar'))
+  check(
+    '拖到底也不会小于最小宽度',
+    floored !== afterW && parseInt(floored, 10) === 200,
+    `${afterW} → ${floored}`,
+  )
+
+  // 5 左下角是齿轮,点开是主题与版本
+  const gear = await page.$$eval('.settings-btn', (n) => n.length)
+  check('左下角出现齿轮入口', gear === 1)
+  await page.click('.settings-btn')
+  await page.waitForSelector('.about-row', { timeout: 10_000 })
+  const aboutText = await page.$$eval('.about-row', (n) => n.map((e) => e.textContent).join(' | '))
+  check('齿轮浮窗里有版本信息', /ClaudeDeck/.test(aboutText), aboutText.slice(0, 60))
+  await page.keyboard.press('Escape')
+
+  // 4 /model 不该被当成消息发出去
+  const msgsBefore = await page.$$eval('.msg-user', (n) => n.length)
+  await page.fill('.composer textarea', '/model')
+  await page.click('.composer [data-state="send"]')
+  await page.waitForTimeout(500)
+  const msgsAfter = await page.$$eval('.msg-user', (n) => n.length)
+  check('/model 没有被发给 agent', msgsBefore === msgsAfter, `${msgsBefore} → ${msgsAfter}`)
+  const popped = await page.$$eval('.pop-desc', (n) => n.length)
+  check('/model 直接把模型弹层点开了', popped > 0)
+  await page.keyboard.press('Escape')
+
+  // 6 + 7:一发出去,侧栏立刻多一条,同时出现等待态
+  await page.click('.new-session')
+  await settle(page)
+  const rowsBefore = await page.$$eval('.session-row', (n) => n.length)
+  await page.fill('.composer textarea', '只回复两个字:好的')
+  await page.click('.composer [data-state="send"]')
+
+  const grew = await page
+    .waitForFunction((n) => document.querySelectorAll('.session-row').length > n, rowsBefore, {
+      timeout: 30_000,
+    })
+    .then(() => true)
+    .catch(() => false)
+  check('一发消息侧栏就多出这条', grew, `${rowsBefore} 条起`)
+
+  const thinkingText = await page
+    .waitForSelector('.thinking', { timeout: 30_000 })
+    .then((el) => el.textContent())
+    .catch(() => null)
+  check('等待时有进行中的反馈', thinkingText !== null, thinkingText?.trim())
+  check('反馈里带着已用时长', /秒/.test(thinkingText ?? ''), thinkingText?.trim())
+  await settle(page)
+  const stillThinking = await page.$$eval('.thinking', (n) => n.length)
+  check('答完就收起', stillThinking === 0)
 } catch (err) {
   failed++
   console.error('\n异常:', err?.message ?? err)

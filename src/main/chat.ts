@@ -107,6 +107,8 @@ export class ChatSession {
   private alwaysAllow = new Set<string>()
   /** 后台任务第一次被看见的时刻 —— SDK 的推送里没有时间,只能自己记 */
   private taskSince = new Map<string, number>()
+  /** 本轮累计的输出 token,每次 send 清零 */
+  private outputTokens = 0
   private pendingAsks = new Map<string, (v: AskAnswer | null) => void>()
   private pendingPlans = new Map<string, (accepted: boolean) => void>()
   private pendingElicitations = new Map<
@@ -258,10 +260,26 @@ export class ChatSession {
     }
 
     if (msg.type === 'stream_event') {
-      const event = msg.event as { type?: string; delta?: { type?: string; text?: string } }
+      const event = msg.event as {
+        type?: string
+        delta?: { type?: string; text?: string }
+        usage?: { output_tokens?: number }
+      }
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
         this.emit({ type: 'delta', text: event.delta.text })
       }
+      // usage 只在每条助手消息收尾时出现一次。一轮里若有工具往返就会有多条
+      // 助手消息,所以这里累加,而不是直接取最后一条的值。
+      if (event.type === 'message_delta' && typeof event.usage?.output_tokens === 'number') {
+        this.outputTokens += event.usage.output_tokens
+        this.emit({ type: 'progress', outputTokens: this.outputTokens })
+      }
+      return
+    }
+
+    // SDK 报的「此刻在干什么」· §06 的等待态
+    if (msg.type === 'system' && msg.subtype === 'status') {
+      this.emit({ type: 'status', status: msg.status })
       return
     }
 
@@ -317,6 +335,8 @@ export class ChatSession {
   }
 
   send(text: string): void {
+    // 计数按「轮」清零 —— 状态行显示的是这一轮的产出,不是整个会话的累计
+    this.outputTokens = 0
     this.inbox.push({
       type: 'user',
       message: { role: 'user', content: text },
@@ -378,7 +398,14 @@ export class ChatSession {
 
   async listModels(): Promise<{ value: string; displayName: string }[]> {
     const models = await this.q?.supportedModels()
-    return (models ?? []).map((m) => ({ value: m.value, displayName: m.displayName }))
+    // description 是 CLI 里 /model 第二列那句话(「Opus 5 with 1M context ·
+    // Best for everyday, complex tasks」),照搬,不自己编。
+    return (models ?? []).map((m) => ({
+      value: m.value,
+      displayName: m.displayName,
+      description: m.description,
+      effortLevels: m.supportedEffortLevels,
+    }))
   }
 
   /** Context window pressure. Over 80% is the only warning before compaction. */

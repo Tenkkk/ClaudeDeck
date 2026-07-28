@@ -375,6 +375,48 @@ kbd,
   grid-template-columns: var(--w-sidebar) 1fr;
   height: 100vh;
   overflow: hidden;
+  /* 拖拽手柄绝对定位在两栏交界处,靠这个定位上下文 */
+  position: relative;
+}
+
+/* ---- 分栏拖拽手柄 ---- */
+
+.resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* 边框只有 1px,让人去拖 1px 是在为难人。手柄宽 7px 压在线上,
+     看上去还是那道线,只是好按中了。 */
+  width: 7px;
+  transform: translateX(-3px);
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.resizer-sidebar {
+  left: var(--w-sidebar);
+}
+
+.resizer-midcol {
+  left: calc(var(--w-sidebar) + var(--w-midcol));
+}
+
+/* 悬停和拖动时才把线点亮 —— 平时它就该是一道安静的边框 */
+.resizer:hover::after,
+.resizer.dragging::after,
+.resizer:focus-visible::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--accent);
+}
+
+.resizer:focus-visible {
+  outline: none;
 }
 
 /* §10:中栏打开时 264 + 320 + 剩下的 */
@@ -888,8 +930,15 @@ kbd,
   color: var(--muted-2);
 }
 
-.version-row:hover {
-  background: var(--bg);
+/* 整行不再可点了(点的是齿轮),所以别再给整行 hover 底色 —— 那会让人
+   以为哪儿都能点 */
+.settings-btn {
+  flex: none;
+  color: var(--muted-2);
+}
+
+.settings-btn:hover {
+  color: var(--ink-2);
 }
 
 /* ---- 主区 ---- */
@@ -1275,6 +1324,28 @@ kbd,
 
 .session-empty {
   padding: var(--s8) var(--s12) var(--s8) calc(var(--s16) + var(--s12));
+}
+
+/* ---- 等待态:忙着但还没开口的那段 ---- */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s6) 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.thinking-label {
+  color: var(--ink-2);
+}
+
+.thinking-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+  /* 秒数每秒变一次宽度,不定宽的话后面的 token 数会左右抖 */
+  font-variant-numeric: tabular-nums;
 }
 
 /* §06 权限卡:行内,不弹窗 —— 弹窗会遮住上文,而你要看的正是上文。
@@ -2050,14 +2121,7 @@ button.todo-box {
   line-height: 1.5;
 }
 
-.pop-index {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted-2);
-}
-
-/* ---- 努力弹层:停靠式滑轨,5 个固定停靠点 · §08 ---- */
+/* ---- 努力弹层:停靠式滑轨,可拖 · §08 ---- */
 
 .effort-head {
   padding: var(--s8) var(--s12) var(--s4);
@@ -2080,6 +2144,19 @@ button.todo-box {
   margin: var(--s6) var(--s12);
   padding: var(--s6) 0;
   position: relative;
+  cursor: pointer;
+  /* 不写这条,按住横拖会被当成页面滚动手势,滑块直接失灵 */
+  touch-action: none;
+}
+
+.effort-track.dragging {
+  cursor: grabbing;
+}
+
+.effort-track:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--r-pill);
 }
 
 .effort-track::before {
@@ -2099,10 +2176,16 @@ button.todo-box {
   display: flex;
   justify-content: center;
   position: relative;
+  /* 指针事件归整条轨道 —— 点落在两个点之间也要能响应 */
+  pointer-events: none;
 }
 
 .effort-stop:hover {
   background: transparent;
+}
+
+.effort-track:hover .effort-dot {
+  background: var(--ink-2);
 }
 
 .effort-dot {
@@ -2113,8 +2196,11 @@ button.todo-box {
   transition: transform 120ms ease, background 120ms ease;
 }
 
-.effort-stop:hover .effort-dot {
-  background: var(--ink-2);
+/* 模型不支持努力程度时(Haiku),控件还在原位但点不动 —— 直接消失会让
+   控件条的宽度跳一下,反而更难认。 */
+.effort-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .effort-stop.current .effort-dot {

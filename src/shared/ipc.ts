@@ -256,6 +256,11 @@ export interface ModelOption {
   value: string
   displayName: string
   description?: string
+  /**
+   * 这个模型支持哪些努力档。缺席表示它根本不支持努力程度 —— Haiku 就是这样,
+   * 此时努力控件整个禁用,而不是画五个点让人点了不生效。
+   */
+  effortLevels?: EffortLevel[]
 }
 
 /** One row in the session list, sourced from the SDK's own session store. */
@@ -317,6 +322,9 @@ export type TranscriptItem =
   | { kind: 'tool'; row: ToolRow }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
+/** 与 SDK 的 SDKStatus 一致 —— 不自己另立一套状态机 */
+export type TurnStatus = 'compacting' | 'requesting' | null
+
 export type ChatEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'delta'; text: string }
@@ -336,6 +344,16 @@ export type ChatEvent =
   | { type: 'tasks'; tasks: BackgroundTask[] }
   /** 收到不会画的 dialogKind,已回 cancelled · §06 兜底 */
   | { type: 'unknownDialog'; notice: UnknownDialogNotice }
+  /**
+   * SDK 自己报的「此刻在干什么」。文案不由我编:requesting 就是在等模型,
+   * compacting 就是在压上下文,null 表示这一段忙完了。
+   */
+  | { type: 'status'; status: TurnStatus }
+  /**
+   * 本轮到目前为止的输出 token 数。注意它**不是逐字跳的** —— usage 只在每条
+   * 助手消息收尾的 message_delta 上出现,所以一轮里有几次工具往返,它就跳几级。
+   */
+  | { type: 'progress'; outputTokens: number }
   | { type: 'done' }
   | { type: 'error'; message: string }
 
