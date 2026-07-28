@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ControlBar from './components/ControlBar.js'
+import ElicitationCard from './components/ElicitationCard.js'
 import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
 import Sidebar from './components/Sidebar.js'
@@ -12,6 +13,7 @@ import {
   type ChatEvent,
   type ContextUsage,
   type DoctorReport,
+  type ElicitationCard as ElicitationCardData,
   type EffortLevel,
   type ModelOption,
   type PermissionMode,
@@ -65,6 +67,8 @@ export default function App(): React.JSX.Element {
   const [context, setContext] = useState<ContextUsage | null>(null)
   const [versions, setVersions] = useState<Versions | null>(null)
   const [permission, setPermission] = useState<PendingPermission | null>(null)
+  const [elicitation, setElicitation] = useState<ElicitationCardData | null>(null)
+  const [unknownDialog, setUnknownDialog] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   /** 切 Effort 要关掉旧 query 再 resume,中间几百毫秒没有活着的 query · §08 */
@@ -116,6 +120,10 @@ export default function App(): React.JSX.Element {
         setTranscript((t) => appendTool(t, event.row))
       } else if (event.type === 'toolUpdate') {
         setTranscript((t) => replaceTool(t, event.row))
+      } else if (event.type === 'elicitation') {
+        setElicitation(event.card)
+      } else if (event.type === 'unknownDialog') {
+        setUnknownDialog(event.notice.dialogKind)
       } else if (event.type === 'permission') {
         setPermission({
           requestId: event.requestId,
@@ -338,6 +346,31 @@ export default function App(): React.JSX.Element {
                   本次会话内不再问 {permission.toolName}
                 </button>
               </div>
+            </div>
+          )}
+
+          {elicitation && (
+            <ElicitationCard
+              card={elicitation}
+              onSubmit={(values) => {
+                void window.api.chat.respondElicitation(elicitation.id, values)
+                setElicitation(null)
+              }}
+              onCancel={() => {
+                void window.api.chat.respondElicitation(elicitation.id, null)
+                setElicitation(null)
+              }}
+            />
+          )}
+
+          {/* §06 兜底:收到这个版本还不会画的 dialogKind,已回 cancelled */}
+          {unknownDialog && (
+            <div className="notice" onClick={() => setUnknownDialog(null)}>
+              <span className="notice-icon">⊙</span>
+              <span>
+                Claude Code 请求了一个这个版本还不会画的选择框,已按它的默认处理继续。
+                <code className="notice-kind">dialogKind: {unknownDialog}</code>
+              </span>
             </div>
           )}
 

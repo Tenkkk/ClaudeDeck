@@ -8,6 +8,7 @@
  */
 import { truncatePath, relativeTime } from '../src/renderer/src/lib/path.ts'
 import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
+import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
 
 let passed = 0
 let failed = 0
@@ -150,6 +151,49 @@ console.log('\ntools —— 工具行归一化 §06')
   eq('TodoWrite 非法状态降级为 pending', rowFromToolUse('t9', 'TodoWrite', { todos: [{ content: 'x', status: 'bogus' }] }).todos[0].status, 'pending')
   eq('Edit 结果无 structuredPatch 不抛', applyToolResult(rowFromToolUse('t10', 'Edit', {}), {}).hunks.length, 0)
   eq('Bash 结果为 null 不抛', applyToolResult(rowFromToolUse('t11', 'Bash', {}), null).interrupted, false)
+}
+
+console.log('\nelicit —— MCP 表单的 schema 映射 §14')
+{
+  const schema = {
+    type: 'object',
+    properties: {
+      browser: { type: 'string', enum: ['chromium', 'firefox', 'webkit'], title: '浏览器' },
+      headless: { type: 'boolean', default: true, description: 'headless · 默认开' },
+      timeout: { type: 'number', default: 30000, unit: 'ms', title: '超时' },
+      grep: { type: 'string', title: '只跑匹配的用例' },
+      weird: { type: 'array' },
+    },
+    required: ['browser'],
+  }
+  const fields = fieldsFromSchema(schema)
+  const by = Object.fromEntries(fields.map((f) => [f.key, f]))
+
+  eq('字段数', fields.length, 5)
+  eq('enum → 分段', by.browser.kind, 'enum')
+  eq('enum 选项保留', by.browser.options?.join(','), 'chromium,firefox,webkit')
+  eq('required 标记', by.browser.required, true)
+  eq('boolean → 勾选', by.headless.kind, 'boolean')
+  eq('boolean 默认值', by.headless.default, true)
+  eq('number → 数字框', by.timeout.kind, 'number')
+  eq('number 带单位', by.timeout.unit, 'ms')
+  eq('title 优先于 key 当标签', by.timeout.label, '超时')
+  eq('无 title 时用 key', by.weird.label, 'weird')
+  eq('认不出的类型降级成输入框', by.weird.kind, 'string')
+  eq('未列进 required 的字段非必填', by.grep.required, false)
+
+  // 控件出来的都是字符串,回传前要按 schema 还原类型
+  const content = coerceValues(fields, {
+    browser: 'firefox',
+    headless: true,
+    timeout: '45000',
+    grep: '',
+  })
+  eq('enum 原样', content.browser, 'firefox')
+  eq('boolean 原样', content.headless, true)
+  eq('number 还原成数字', content.timeout, 45000)
+  eq('空串不回传', 'grep' in content, false)
+  eq('没填的字段不回传', 'weird' in content, false)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

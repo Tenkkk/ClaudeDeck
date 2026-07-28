@@ -1,10 +1,12 @@
 import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { credentialEnv } from './config.js'
+import { coerceValues, fieldsFromSchema } from './elicit.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   ChatEvent,
   ContextUsage,
   EffortLevel,
+  ElicitationField,
   PermissionMode,
   ToolRow,
   UsageInfo,
@@ -65,6 +67,7 @@ export interface StartOptions {
 }
 
 let permissionSeq = 0
+let elicitSeq = 0
 
 /**
  * 权限卡上要显示的那个参数。工具不同,最该被看见的东西也不同:
@@ -91,6 +94,13 @@ export class ChatSession {
   private toolRows = new Map<string, ToolRow>()
   /** 勾过「本次会话内不再问」的工具名。换会话即失效。 */
   private alwaysAllow = new Set<string>()
+  private pendingElicitations = new Map<
+    string,
+    {
+      resolve: (v: Record<string, string | boolean> | null) => void
+      fields: ElicitationField[]
+    }
+  >()
 
   sessionId: string | null = null
 
@@ -111,7 +121,45 @@ export class ChatSession {
         effort: opts.effort,
         permissionMode: opts.permissionMode,
         includePartialMessages: true,
+        // 注意:brief §6 把 askUserQuestionTimeout 也列进了这里,但它属于
+        // Settings(.claude/settings.json),不是 Options —— 传进来编译不过。
+        toolConfig: { askUserQuestion: { previewFormat: 'html' } },
+        // 不开的话分支就无法回退文件(坑 4.2)
+        enableFileCheckpointing: true,
+        // 开了主对话会被子 Agent 的自言自语冲垮(坑 4.5)
+        forwardSubagentText: false,
         env: { ...process.env, ...credentialEnv() } as Record<string, string>,
+
+        // MCP 服务要你填表 · §14。requestedSchema 是标准 JSON Schema,
+        // 所以这里能写通用渲染器。
+        onElicitation: async (request) => {
+          const id = `elicit-${++elicitSeq}`
+          const fields = fieldsFromSchema(request.requestedSchema)
+          const answer = await new Promise<Record<string, string | boolean> | null>((resolve) => {
+            this.pendingElicitations.set(id, { resolve, fields })
+            this.emit({
+              type: 'elicitation',
+              card: {
+                id,
+                serverName: request.displayName ?? request.serverName,
+                message: request.message,
+                mode: request.mode === 'url' ? 'url' : 'form',
+                url: request.url,
+                fields,
+              },
+            })
+          })
+          if (!answer) return { action: 'cancel' }
+          return { action: 'accept', content: coerceValues(fields, answer) }
+        },
+
+        // 兜底 · 坑 4.3:dialogKind 是开放字符串,payload 按 kind 各自定义。
+        // 我们没有任何一种的可验证契约,所以一律回 cancelled 并在界面上
+        // 低调说明 —— 猜错的选择会真的落到文件上。
+        onUserDialog: async (request) => {
+          this.emit({ type: 'unknownDialog', notice: { dialogKind: request.dialogKind } })
+          return { behavior: 'cancelled' }
+        },
         canUseTool: async (toolName, input) => {
           // 用户勾过「本次会话内不再问」的工具直接放行,不再打断
           if (this.alwaysAllow.has(toolName)) {
@@ -212,6 +260,14 @@ export class ChatSession {
    * `remember` 对应卡片右下角的「本次会话内不再问 X」。只在允许时有意义,
    * 且只作用于当前这个 ChatSession —— 换会话就重新问。
    */
+  /** `values` 为 null 表示用户取消了这张表。 */
+  answerElicitation(id: string, values: Record<string, string | boolean> | null): void {
+    const pending = this.pendingElicitations.get(id)
+    if (!pending) return
+    this.pendingElicitations.delete(id)
+    pending.resolve(values)
+  }
+
   answerPermission(requestId: string, allow: boolean, remember = false, toolName?: string): void {
     const resolve = this.pendingPermissions.get(requestId)
     if (!resolve) return
@@ -284,6 +340,8 @@ export class ChatSession {
   dispose(): void {
     for (const resolve of this.pendingPermissions.values()) resolve(false)
     this.pendingPermissions.clear()
+    for (const p of this.pendingElicitations.values()) p.resolve(null)
+    this.pendingElicitations.clear()
     this.inbox.close()
     this.q = null
   }

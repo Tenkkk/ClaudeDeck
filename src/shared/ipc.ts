@@ -92,6 +92,43 @@ export interface Versions {
   cli: string | null
 }
 
+/**
+ * MCP 服务发起的表单请求(§14)。
+ *
+ * `schema` 是标准 JSON Schema,所以可以写通用渲染器 —— 这一点和 dialog 的
+ * payload 不同,后者按 kind 各自定义、协议层只当不透明对象转发,写不出万能渲染器。
+ *
+ * 头部必须写清是哪个 MCP 服务在要:说话的不是 Claude,是外部服务。
+ */
+export interface ElicitationField {
+  key: string
+  label: string
+  description?: string
+  required: boolean
+  /** enum → 分段(超过 5 项转竖排单选)· boolean → 勾选 · number → 数字框 · string → 输入框 */
+  kind: 'enum' | 'boolean' | 'number' | 'string'
+  options?: string[]
+  unit?: string
+  default?: string | number | boolean
+}
+
+export interface ElicitationCard {
+  id: string
+  serverName: string
+  message: string
+  mode: 'form' | 'url'
+  url?: string
+  fields: ElicitationField[]
+}
+
+/**
+ * 收到一个这个版本还不会画的 dialogKind 时的低调提示(§06 兜底)。
+ * 已按 CLI 的默认处理继续 —— 我们回的是 cancelled,绝不瞎猜 payload 硬画一个框。
+ */
+export interface UnknownDialogNotice {
+  dialogKind: string
+}
+
 export interface ModelOption {
   value: string
   displayName: string
@@ -164,6 +201,10 @@ export type ChatEvent =
   | { type: 'toolUpdate'; row: ToolRow }
   /** `target` 是这次调用最该被看见的那个参数(文件路径 / 命令),已在主进程取好。 */
   | { type: 'permission'; requestId: string; toolName: string; target?: string }
+  /** MCP 服务要你填一张表 · §14 */
+  | { type: 'elicitation'; card: ElicitationCard }
+  /** 收到不会画的 dialogKind,已回 cancelled · §06 兜底 */
+  | { type: 'unknownDialog'; notice: UnknownDialogNotice }
   | { type: 'done' }
   | { type: 'error'; message: string }
 

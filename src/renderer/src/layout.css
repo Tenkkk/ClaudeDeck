@@ -1093,6 +1093,145 @@ kbd,
   margin-left: var(--s6);
 }
 
+/* §14 MCP 表单卡。左条同样是陶土 —— 它也在拦你,只是提问的是外部服务。 */
+.ask-card {
+  width: 100%;
+  max-width: var(--w-prose);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-popover);
+  padding: var(--s16);
+  display: grid;
+  gap: var(--s6);
+}
+
+/* 头部写清是哪个 MCP 服务在要 —— 说话的不是 Claude,是外部服务 */
+.card-source {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted);
+}
+
+.fields {
+  display: grid;
+  gap: var(--s12);
+  margin: var(--s8) 0 var(--s4);
+}
+
+.field {
+  display: grid;
+  gap: var(--s6);
+}
+
+.field-inline {
+  grid-auto-flow: column;
+  grid-template-columns: auto auto 1fr;
+  justify-content: start;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s4);
+  color: var(--ink);
+}
+
+/* required → 标题后一个陶土小点 */
+.required-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.field-desc {
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.field-input {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.field-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-unit {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted);
+}
+
+/* enum 超过 5 项转竖排单选 */
+.enum-list {
+  display: grid;
+  gap: 2px;
+}
+
+.enum-list button {
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+
+.enum-list button[aria-pressed='true'] {
+  background: var(--accent-tint);
+  border-color: var(--focus);
+}
+
+.todo-box.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+button.todo-box {
+  padding: 0;
+  cursor: pointer;
+}
+
+.card-keys {
+  margin-left: auto;
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+}
+
+/* §06 兜底提示:低调一行,不做成错误 */
+.notice {
+  width: 100%;
+  max-width: var(--w-prose);
+  display: flex;
+  gap: var(--s8);
+  align-items: flex-start;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--s8) var(--s12);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.6;
+  cursor: default;
+}
+
+.notice-icon {
+  flex: none;
+  color: var(--mark);
+}
+
+.notice-kind {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+}
+
 .row {
   display: flex;
   gap: var(--s8);

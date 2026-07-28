@@ -223,6 +223,12 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('chat:models', () => active?.listModels() ?? [])
+  ipcMain.handle(
+    'chat:elicitation',
+    (_e, id: string, values: Record<string, string | boolean> | null) => {
+      active?.answerElicitation(id, values)
+    },
+  )
   ipcMain.handle('chat:usage', () => active?.usage() ?? null)
   ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
 

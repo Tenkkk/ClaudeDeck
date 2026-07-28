@@ -52,6 +52,10 @@ const api = {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),
     send: (text: string): Promise<boolean> => ipcRenderer.invoke('chat:send', text),
     models: (): Promise<ModelOption[]> => ipcRenderer.invoke('chat:models'),
+    respondElicitation: (
+      id: string,
+      values: Record<string, string | boolean> | null,
+    ): Promise<void> => ipcRenderer.invoke('chat:elicitation', id, values),
     usage: (): Promise<UsageInfo | null> => ipcRenderer.invoke('chat:usage'),
     context: (): Promise<ContextUsage | null> => ipcRenderer.invoke('chat:context'),
     interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),
