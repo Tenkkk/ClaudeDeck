@@ -148,6 +148,23 @@ export interface AgentInfo {
   model?: string
 }
 
+/**
+ * 文件树里的一项。路径一律相对项目根、用正斜杠 ——
+ * 渲染层永远不该拿到绝对路径,那既没用又是泄露。
+ */
+export interface FileEntry {
+  path: string
+  name: string
+  kind: 'dir' | 'file'
+  size?: number
+  /** 能不能在中栏里改。看得见不等于能改 —— 只有 `.claude/` 与项目根的 CLAUDE.md 可写 */
+  editable?: boolean
+}
+
+export type FileRead =
+  | { ok: true; text: string; editable: boolean }
+  | { ok: false; reason: 'not-found' | 'out-of-scope' | 'too-large' | 'binary'; size?: number }
+
 /** 当前登录的账号。原生 `/status` 里的那几行 */
 export interface AccountInfo {
   email?: string

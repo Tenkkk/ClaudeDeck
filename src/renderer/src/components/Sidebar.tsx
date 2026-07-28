@@ -5,7 +5,6 @@ import { relativeTime } from '../lib/path.js'
 import {
   THEME_OPTIONS,
   type Project,
-  type ClaudeEntry,
   type SessionListItem,
   type ThemePref,
   type AccountInfo,
@@ -40,11 +39,8 @@ export default function Sidebar({
   onManageProjects,
   theme,
   onTheme,
-  claudeEntries,
-  openFile,
-  onToggleClaude,
-  claudeOpen,
-  onOpenFile,
+  filesProject,
+  onOpenFiles,
 }: {
   projects: Project[]
   sessionsByProject: Record<string, SessionListItem[]>
@@ -64,11 +60,9 @@ export default function Sidebar({
   onManageProjects: () => void
   theme: ThemePref
   onTheme: (t: ThemePref) => void
-  claudeEntries: ClaudeEntry[]
-  openFile: string | null
-  onToggleClaude: () => void
-  claudeOpen: boolean
-  onOpenFile: (relPath: string) => void
+  /** 中栏正在浏览哪个项目的文件,没有就是 null */
+  filesProject: string | null
+  onOpenFiles: (projectPath: string) => void
 }): React.JSX.Element {
   const [themeOpen, setThemeOpen] = useState(false)
   return (
@@ -144,49 +138,24 @@ export default function Sidebar({
 
               {open && (
                 <>
-                  {/* .claude 节点挂在项目名和会话之间 · §10 */}
-                  {project.path === activeWorkspace && (
-                    <>
-                      <button
-                        className="claude-node"
-                        aria-expanded={claudeOpen}
-                        onClick={onToggleClaude}
-                        title="读写这个项目的 .claude 配置"
-                      >
-                        <span className="caret">
-                          <CaretIcon />
-                        </span>
-                        <span className="mono">.claude</span>
-                        <span className="hint">配置</span>
-                      </button>
-
-                      {claudeOpen &&
-                        claudeEntries.map((entry) =>
-                          entry.kind === 'dir' ? (
-                            <div key={entry.path} className="claude-dir">
-                              <span className="mono">{entry.name}/</span>
-                              <span className="count">{entry.count}</span>
-                            </div>
-                          ) : (
-                            <button
-                              key={entry.path}
-                              className="claude-file"
-                              aria-current={entry.path === openFile}
-                              onClick={() => onOpenFile(entry.path)}
-                              title={entry.path}
-                            >
-                              <span className="mono">{entry.name}</span>
-                              {/* 打开的文件用中性填充 + 「打开中」,不抢会话的陶土选中态 ——
-                                  两个「当前」必须能分开 */}
-                              {entry.path === openFile && <span className="hint">打开中</span>}
-                              {entry.atRoot && entry.path !== openFile && (
-                                <span className="hint">项目根</span>
-                              )}
-                            </button>
-                          ),
-                        )}
-                    </>
-                  )}
+                  {/*
+                    文件入口挂在项目名和会话之间。
+                    原先这里是个只认 `.claude` 的节点,而且只有当前聚焦的项目才有 ——
+                    「为什么别的项目看不到配置」正是这么来的。现在每个项目都有,
+                    `.claude` 只是树里的一个普通文件夹。
+                  */}
+                  <button
+                    className="claude-node"
+                    aria-current={filesProject === project.path}
+                    onClick={() => onOpenFiles(project.path)}
+                    title={`浏览 ${project.name} 的文件`}
+                  >
+                    <span className="caret">
+                      <CaretIcon />
+                    </span>
+                    <FolderIcon className="folder" />
+                    <span className="label">文件</span>
+                  </button>
 
                   {sessions.length === 0 && (
                     <div className="hint session-empty">这个项目下还没有会话。</div>
@@ -221,9 +190,11 @@ export default function Sidebar({
                     </button>
                   ))}
 
-                  {!showAll && sessions.length > COLLAPSED_LIMIT && (
+                  {/* 展开之后要能收回去 —— 只给单程票,列表长了就再也回不到
+                      「只看最近几条」的状态,只能把整个项目折叠掉 */}
+                  {sessions.length > COLLAPSED_LIMIT && (
                     <button className="expand-all" onClick={() => onExpandAll(project.path)}>
-                      展开全部 {sessions.length} 条
+                      {showAll ? `收起,只看最近 ${COLLAPSED_LIMIT} 条` : `展开全部 ${sessions.length} 条`}
                     </button>
                   )}
                 </>

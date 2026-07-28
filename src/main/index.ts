@@ -20,14 +20,23 @@ import {
   updateConfig,
 } from './config.js'
 import { installCli, runDoctor } from './doctor.js'
-import { listClaudeEntries, readClaudeFile, writeClaudeFile } from './claudedir.js'
+import {
+  listClaudeEntries,
+  listProjectDir,
+  readClaudeFile,
+  readProjectFile,
+  writeClaudeFile,
+} from './claudedir.js'
 import { annotateSources } from './commands.js'
+import { unexpandSlashCommand } from './history.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   AskAnswer,
   ChatEvent,
   ClaudeEntry,
   EffortLevel,
+  FileEntry,
+  FileRead,
   PermissionMode,
   RewindPreview,
   SaveResult,
@@ -183,7 +192,9 @@ function registerIpc(): void {
       if (role !== 'user' && role !== 'assistant') continue
 
       if (typeof content === 'string') {
-        if (content.trim()) out.push({ kind: role, text: content, id: raw.uuid })
+        // 用户消息可能是被展开过的斜杠命令,还原成人看的样子
+        const shown = role === 'user' ? unexpandSlashCommand(content) : content
+        if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
         continue
       }
       if (!Array.isArray(content)) continue
@@ -206,7 +217,8 @@ function registerIpc(): void {
           if (at >= 0) out[at] = { kind: 'tool', row: filled }
         }
       }
-      if (text.trim()) out.push({ kind: role, text, id: raw.uuid })
+      const shown = role === 'user' ? unexpandSlashCommand(text) : text
+      if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
     }
 
     return out
@@ -295,6 +307,17 @@ function registerIpc(): void {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return
     void shell.openExternal(parsed.href)
   })
+
+  /**
+   * 文件树。一次只列一层 —— 展开哪层问哪层,免得在 node_modules 上原地爆炸。
+   * 路径收敛与 .claude 那套同源,但**读的范围是整个项目、写的范围没有变**。
+   */
+  ipcMain.handle('files:list', (_e, projectPath: string, relDir: string): FileEntry[] =>
+    listProjectDir(projectPath, relDir),
+  )
+  ipcMain.handle('files:read', (_e, projectPath: string, relPath: string): FileRead =>
+    readProjectFile(projectPath, relPath),
+  )
 
   // .claude 配置栏 · §10。范围锁在 claudedir.ts 里,渲染层传来的路径一律不信。
   ipcMain.handle('claude:list', (): ClaudeEntry[] => {

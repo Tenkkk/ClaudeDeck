@@ -10,6 +10,8 @@ import type {
   McpServer,
   DoctorReport,
   EffortLevel,
+  FileEntry,
+  FileRead,
   ModelOption,
   PermissionMode,
   RewindPreview,
@@ -65,6 +67,13 @@ const api = {
       title?: string,
     ): Promise<string> =>
       ipcRenderer.invoke('sessions:forkFrom', sessionId, messageId, rewind, title),
+  },
+  files: {
+    /** 列一层。relDir 传空串就是项目根 */
+    list: (projectPath: string, relDir: string): Promise<FileEntry[]> =>
+      ipcRenderer.invoke('files:list', projectPath, relDir),
+    read: (projectPath: string, relPath: string): Promise<FileRead> =>
+      ipcRenderer.invoke('files:read', projectPath, relPath),
   },
   claude: {
     list: (): Promise<ClaudeEntry[]> => ipcRenderer.invoke('claude:list'),

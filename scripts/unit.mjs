@@ -15,6 +15,8 @@ import { bundledExecutablePath } from '../src/main/binary.ts'
 import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
 import { parseMarkdown, parseInline } from '../src/renderer/src/lib/markdown.ts'
 import { flatten } from '../src/renderer/src/lib/commands.ts'
+import { unexpandSlashCommand } from '../src/main/history.ts'
+import { resolveInProject, isEditable } from '../src/main/claudedir.ts'
 
 let passed = 0
 let failed = 0
@@ -428,6 +430,46 @@ console.log('\n命令面板 —— 相关度排序')
     { name: 'deploy', description: '', argumentHint: '', source: 'project' },
   ]
   eq('全等的越过分组置顶', flatten(proj, 'deploy')[0].name, 'deploy')
+}
+
+// ---- 历史里的斜杠命令还原 --------------------------------------------------
+console.log('\n历史 —— 斜杠命令还原')
+{
+  const expanded =
+    '<command-name>/config</command-name>\n        <command-message>config</command-message>\n        <command-args></command-args>'
+  eq('还原成命令本身', unexpandSlashCommand(expanded), '/config')
+
+  const withArgs =
+    '<command-name>/mcp</command-name><command-message>mcp</command-message><command-args>reconnect pencil</command-args>'
+  eq('带参数一并还原', unexpandSlashCommand(withArgs), '/mcp reconnect pencil')
+
+  // CLI 存的名字有时不带斜杠
+  eq('名字没斜杠也补上', unexpandSlashCommand('<command-name>context</command-name>'), '/context')
+
+  // 认不出就原样返回,绝不吃内容
+  eq('普通消息原样返回', unexpandSlashCommand('帮我看下 README'), '帮我看下 README')
+  eq('半截标记原样返回', unexpandSlashCommand('<command-name>没闭合'), '<command-name>没闭合')
+}
+
+// ---- 文件树的路径收敛 ------------------------------------------------------
+// 读的范围放宽到整个项目了,越界判断必须比原来更受得住推敲。
+console.log('\n文件树 —— 路径收敛')
+{
+  const root = String.raw`D:\proj`
+  eq('项目内的文件放行', resolveInProject(root, 'src/main/chat.ts') !== null, true)
+  eq('项目根自己放行', resolveInProject(root, '.') !== null, true)
+  eq('往上跳一层拒绝', resolveInProject(root, '../secrets.txt'), null)
+  eq('绕一圈再往上跳也拒绝', resolveInProject(root, 'src/../../secrets.txt'), null)
+  // Windows 跨盘符时 relative 返回的是绝对路径,不以 .. 开头 —— 只查前缀会放行
+  eq('跨盘符的绝对路径拒绝', resolveInProject(root, String.raw`C:\Windows\win.ini`), null)
+  // 同级的相似目录不能被当成在范围内
+  eq('同名前缀的兄弟目录拒绝', resolveInProject(root, String.raw`..\proj-backup\x`), null)
+
+  // 看得见不等于能改
+  eq('源码不可写', isEditable(root, 'src/main/chat.ts'), false)
+  eq('.claude 下的配置可写', isEditable(root, '.claude/settings.json'), true)
+  eq('项目根的 CLAUDE.md 可写', isEditable(root, 'CLAUDE.md'), true)
+  eq('别处的 CLAUDE.md 不可写', isEditable(root, 'docs/CLAUDE.md'), false)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

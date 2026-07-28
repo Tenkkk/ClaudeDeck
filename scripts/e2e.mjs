@@ -400,30 +400,52 @@ try {
     // 这一节纯文件读写,不产生 API 调用
   }
   if (want(7)) {
-    console.log('\n[7/11] .claude 配置栏')
+    console.log('\n[7/11] 文件树与配置读写')
+    // 每个项目下都有「文件」入口(原先只有当前聚焦的项目才有 .claude 节点)
+    const fileNodes = await page.$$eval('.claude-node', (n) => n.length)
+    const projectCount = await page.$$eval('.project-row', (n) => n.length)
+    check('每个项目都有文件入口', fileNodes === projectCount, `${fileNodes} / ${projectCount} 个项目`)
+
     await page.click('.claude-node')
-    await page.waitForSelector('.claude-file', { timeout: 10_000 })
-    const files = await page.$$eval('.claude-file .mono', (n) => n.map((e) => e.textContent?.trim()))
+    await page.waitForSelector('.file-row', { timeout: 10_000 })
+    const rootNames = await page.$$eval('.file-row .file-name', (n) => n.map((e) => e.textContent?.trim()))
     check(
-      '列出 .claude 下的文件与根的 CLAUDE.md',
-      files.includes('settings.local.json') && files.includes('CLAUDE.md'),
-      files.join(' / '),
+      '列出项目根:.claude 是里面的一个普通文件夹',
+      rootNames.includes('.claude') && rootNames.includes('CLAUDE.md'),
+      rootNames.join(' / '),
     )
+    check('三栏布局生效', (await page.$$eval('.shell.with-mid', (n) => n.length)) === 1)
+
+    // 展开 .claude —— 一次只列一层,展开才有下一层
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.file-row')].find((b) =>
+        b.textContent?.trim().startsWith('.claude'),
+      )
+      row?.click()
+    })
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('.file-row .file-name')].some(
+          (e) => e.textContent?.trim() === 'settings.local.json',
+        ),
+      undefined,
+      { timeout: 10_000 },
+    )
+    check('展开目录才列出下一层', true, 'settings.local.json')
+
+    // 可写的标出来,源码之类只读
+    const editableTags = await page.$$eval('.file-tag', (n) => n.length)
+    check('可改的文件标了出来', editableTags > 0, `${editableTags} 个`)
 
     await page.evaluate(() => {
-      const btn = [...document.querySelectorAll('.claude-file')].find((b) =>
-        b.textContent?.includes('settings.local.json'),
+      const row = [...document.querySelectorAll('.file-row')].find(
+        (b) => b.querySelector('.file-name')?.textContent?.trim() === 'settings.local.json',
       )
-      btn?.click()
+      row?.click()
     })
     await page.waitForSelector('.midcol-text', { timeout: 10_000 })
     const loaded = await page.$eval('.midcol-text', (e) => e.value)
     check('中栏载入了文件内容', loaded.includes('permissions'), `${loaded.length} 字`)
-    check('三栏布局生效', (await page.$$eval('.shell.with-mid', (n) => n.length)) === 1)
-    check(
-      '打开的文件用中性态,不抢会话的陶土选中态',
-      (await page.$$eval('.claude-file[aria-current="true"]', (n) => n.length)) === 1,
-    )
 
     // 改一笔 → 出脏点 → Ctrl S 保存 → 脏点消失 → 磁盘上真的变了
     await page.fill(
@@ -448,13 +470,46 @@ try {
     const stillOnDisk = readFileSync(join(WORKSPACE, '.claude', 'settings.local.json'), 'utf8')
     check('坏 JSON 没有落盘', stillOnDisk.includes('Bash(ls)'))
 
-    // 有未保存改动时关闭要拦一次
-    await page.click('.midcol-head .icon-btn')
+    // 有未保存改动时,返回和关闭都要拦一次,而且拦完要按当初点的那一颗走。
+    // 先试「返回」:确认之后应当退回文件树,而不是把整栏关掉。
+    await page.click('.midcol-back')
     await page.waitForSelector('.midcol-confirm', { timeout: 10_000 })
-    check('未保存时关闭会拦一次', true)
+    check('未保存时返回会拦一次', true)
     await page.click('.midcol-confirm .row button:nth-child(2)')
-    await page.waitForFunction(() => !document.querySelector('.midcol'), { timeout: 10_000 })
-    check('选「不保存」后中栏关闭', true)
+    await page.waitForFunction(
+      () => document.querySelectorAll('.midcol-text').length === 0,
+      undefined,
+      { timeout: 10_000 },
+    )
+    check('选「不保存」后退回文件树', (await page.$$eval('.file-row', (n) => n.length)) > 0)
+
+    // 源码类文件只读 —— 看得见不等于能改
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.file-row')].find(
+        (b) => b.querySelector('.file-name')?.textContent?.trim() === 'CLAUDE.md',
+      )
+      row?.click()
+    })
+    await page.waitForSelector('.midcol-text', { timeout: 10_000 })
+    check('CLAUDE.md 可写,不标只读', (await page.$$eval('.midcol-ro', (n) => n.length)) === 0)
+
+    // ✕ 是关掉整栏,不是退回树 —— 两颗按钮各管各的
+    await page.click('.midcol-head .icon-btn:last-of-type')
+    await page.waitForFunction(() => !document.querySelector('.midcol'), undefined, {
+      timeout: 10_000,
+    })
+    check('✕ 关掉整栏', (await page.$$eval('.shell.with-mid', (n) => n.length)) === 0)
+
+    // 展开全部之后要能收回去
+    const expandBtn = await page.$('.expand-all')
+    if (expandBtn) {
+      const before = await page.$$eval('.session-row', (n) => n.length)
+      await expandBtn.click()
+      const expanded = await page.$$eval('.session-row', (n) => n.length)
+      await page.click('.expand-all')
+      const collapsed = await page.$$eval('.session-row', (n) => n.length)
+      check('展开全部之后能收回去', expanded > before && collapsed === before, `${before} → ${expanded} → ${collapsed}`)
+    }
 
     // ---- 会话右键菜单 · §08 ------------------------------------------------
   }

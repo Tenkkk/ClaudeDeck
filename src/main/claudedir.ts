@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import type { ClaudeEntry, SaveResult } from '../shared/ipc.js'
+import type { ClaudeEntry, FileEntry, SaveResult } from '../shared/ipc.js'
 
 /**
  * `.claude` 配置的读写 —— 设计终稿 §10。
@@ -47,6 +47,115 @@ export function resolveInScope(projectPath: string, relPath: string): string | n
   const rel = relative(claudeDir, target)
   if (rel === '' || isAbsolute(rel) || rel.startsWith('..') || rel.includes(`..${sep}`)) return null
   return target
+}
+
+/**
+ * 读的范围:项目目录之内的任何东西。
+ *
+ * 和 `resolveInScope` 分开是有意的 —— **看得见不等于能改**。
+ * 文件树要能浏览整个项目,但能写的只有 `.claude/` 和项目根的 `CLAUDE.md`;
+ * 一个聊天软件不该顺手变成能改你任意源码的编辑器。
+ */
+export function resolveInProject(projectPath: string, relPath: string): string | null {
+  const root = resolve(projectPath)
+  const target = resolve(root, relPath)
+  if (target === root) return target
+
+  // 判断方式和 resolveInScope 一致:用 relative,并且挡住 Windows 跨盘符
+  // 时返回绝对路径的情况
+  const rel = relative(root, target)
+  if (rel === '' || isAbsolute(rel) || rel.startsWith('..') || rel.includes(`..${sep}`)) return null
+  return target
+}
+
+/** 这个文件能不能在中栏里改 —— 就是原来那套写入范围 */
+export function isEditable(projectPath: string, relPath: string): boolean {
+  return resolveInScope(projectPath, relPath) !== null
+}
+
+/** 超过这个大小不往界面上送 —— 中栏是看配置的,不是看日志的 */
+const MAX_READ_BYTES = 512 * 1024
+
+/**
+ * 列出一层目录。**只列一层**,展开哪一层再问哪一层 ——
+ * 一次递归整个项目,遇到 node_modules 就是几十万个文件。
+ */
+export function listProjectDir(projectPath: string, relDir: string): FileEntry[] {
+  const dir = resolveInProject(projectPath, relDir || '.')
+  if (!dir || !existsSync(dir)) return []
+
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return []
+  }
+
+  const dirs: FileEntry[] = []
+  const files: FileEntry[] = []
+
+  for (const name of names) {
+    const full = join(dir, name)
+    let s
+    try {
+      s = statSync(full)
+    } catch {
+      // 断掉的符号链接之类,跳过就是,不要让整个目录列不出来
+      continue
+    }
+    const rel = relative(resolve(projectPath), full).split(sep).join('/')
+    if (s.isDirectory()) {
+      dirs.push({ path: rel, name, kind: 'dir' })
+    } else {
+      files.push({
+        path: rel,
+        name,
+        kind: 'file',
+        size: s.size,
+        editable: isEditable(projectPath, rel),
+      })
+    }
+  }
+
+  // 目录在前、各自按名字排 —— 和资源管理器、和图里的 Files 面板一致
+  const byName = (a: FileEntry, b: FileEntry): number => a.name.localeCompare(b.name)
+  return [...dirs.sort(byName), ...files.sort(byName)]
+}
+
+export type FileRead =
+  | { ok: true; text: string; editable: boolean }
+  | { ok: false; reason: 'not-found' | 'out-of-scope' | 'too-large' | 'binary'; size?: number }
+
+/**
+ * 读项目里的一个文件给中栏看。
+ *
+ * 二进制和超大文件直接拒绝并说明原因 —— 把一个 exe 的字节倒进 <pre> 里
+ * 只会让界面卡住,而且什么也读不出来。
+ */
+export function readProjectFile(projectPath: string, relPath: string): FileRead {
+  const target = resolveInProject(projectPath, relPath)
+  if (!target) return { ok: false, reason: 'out-of-scope' }
+  if (!existsSync(target)) return { ok: false, reason: 'not-found' }
+
+  let size = 0
+  try {
+    size = statSync(target).size
+  } catch {
+    return { ok: false, reason: 'not-found' }
+  }
+  if (size > MAX_READ_BYTES) return { ok: false, reason: 'too-large', size }
+
+  let buf: Buffer
+  try {
+    buf = readFileSync(target)
+  } catch {
+    return { ok: false, reason: 'not-found' }
+  }
+
+  // NUL 字节是判定二进制最省事也最靠谱的一招:文本文件里不会有
+  if (buf.subarray(0, 8192).includes(0)) return { ok: false, reason: 'binary', size }
+
+  return { ok: true, text: buf.toString('utf8'), editable: isEditable(projectPath, relPath) }
 }
 
 const TEXT_EXT = /\.(json|md|markdown|txt|ya?ml|toml)$/i

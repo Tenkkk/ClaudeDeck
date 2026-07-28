@@ -984,6 +984,131 @@ kbd,
   white-space: nowrap;
 }
 
+/* 归属行右端的文件入口 */
+.crumb-files {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--r-control);
+  padding: var(--s2) var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.crumb-files:hover {
+  background: var(--bg);
+  color: var(--ink-2);
+}
+
+.crumb-files[aria-current='true'] {
+  border-color: var(--border);
+  color: var(--ink-2);
+}
+
+/* ---- 文件树 ---- */
+
+.file-filter {
+  padding: var(--s8) var(--s12);
+  border-bottom: 1px solid var(--border);
+}
+
+.file-filter input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  padding: var(--s4) var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--ink);
+}
+
+.file-list {
+  overflow: auto;
+  padding: var(--s4) 0;
+  min-height: 0;
+}
+
+.file-empty {
+  padding: var(--s8) var(--s12);
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding-top: var(--s4);
+  padding-bottom: var(--s4);
+  padding-right: var(--s12);
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--ink-2);
+}
+
+.file-row:hover {
+  background: var(--bg);
+}
+
+.file-row.dir {
+  color: var(--ink);
+}
+
+.file-caret {
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+  color: var(--muted-2);
+}
+
+.file-caret.open {
+  transform: rotate(0deg);
+}
+
+/* 文件没有箭头,但要占住同样的宽度,否则同一层的名字对不齐 */
+.file-caret-space {
+  flex: none;
+  width: 11px;
+}
+
+.file-icon {
+  flex: none;
+  color: var(--muted);
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tag {
+  flex: none;
+  margin-left: auto;
+  padding: 0 var(--s6);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.midcol-back {
+  flex: none;
+}
+
+.midcol-ro {
+  flex: none;
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+}
+
 /* ---- 上下文环:输入框左下角,紧挨权限 ---- */
 
 .ctx-ring {

@@ -6,6 +6,7 @@ import ElicitationCard from './components/ElicitationCard.js'
 import ForkDialog from './components/ForkDialog.js'
 import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
+import FileTree from './components/FileTree.js'
 import MidColumn from './components/MidColumn.js'
 import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
@@ -132,14 +133,21 @@ export default function App(): React.JSX.Element {
   const [turnStatus, setTurnStatus] = useState<TurnStatus>(null)
   const [outputTokens, setOutputTokens] = useState(0)
   /** .claude 配置栏 · §10 */
-  const [claudeOpen, setClaudeOpen] = useState(false)
-  const [claudeEntries, setClaudeEntries] = useState<ClaudeEntry[]>([])
+  /** 中栏在浏览哪个项目的文件树 */
+  const [filesProject, setFilesProject] = useState<string | null>(null)
   const [openFile, setOpenFile] = useState<{ project: string; path: string } | null>(null)
   const [fileDirty, setFileDirty] = useState(false)
   const [tasks, setTasks] = useState<BackgroundTask[]>([])
   const [forkFrom, setForkFrom] = useState<string | null>(null)
   /** 刚发出、还没在 SDK 的 store 里露面的那条会话 —— 侧栏先摆着 */
   const [pendingSession, setPendingSession] = useState<{ path: string; title: string } | null>(null)
+  /**
+   * 刚删掉、但 store 的列表还没反映出来的会话。
+   *
+   * `deleteSession` 返回之后紧接着 `listSessions`,拿回来的往往还带着它 ——
+   * 于是「删了但它还在」。这里先在本地把它划掉,等真实列表也不含它了再放手。
+   */
+  const [deletedSessions, setDeletedSessions] = useState<string[]>([])
   const transcriptRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -180,6 +188,10 @@ export default function App(): React.JSX.Element {
     if (id && Object.values(map).some((rows) => rows.some((s) => s.sessionId === id))) {
       setPendingSession(null)
     }
+    // 真实列表里也不见了的,本地就不用再划着它
+    setDeletedSessions((ids) =>
+      ids.filter((del) => Object.values(map).some((rows) => rows.some((s) => s.sessionId === del))),
+    )
   }, [])
 
   /** 额度与上下文都随对话变化,每轮结束刷新一次。 */
@@ -331,19 +343,19 @@ export default function App(): React.JSX.Element {
   // 会把这个 effect 再触发一次,于是「一保存文件就自己关了」。
   const dirtyRef = useRef(false)
   dirtyRef.current = fileDirty
-  const prevProject = useRef<string | null | undefined>(undefined)
+  //
+  // 切项目**不再**关掉中栏:文件树现在显式绑在某个项目上,头部也写着是哪个 ——
+  // 一边看 A 的文件一边跟 B 聊是合理的。要收拾的只有一种情况:那个项目被移除了。
+  const known = (config?.projects ?? []).map((p) => p.path).join(' ')
   useEffect(() => {
-    const project = config?.activeWorkspace ?? null
-    if (prevProject.current === undefined) {
-      prevProject.current = project
-      return
-    }
-    if (prevProject.current === project) return
-    prevProject.current = project
-    setClaudeOpen(false)
-    setClaudeEntries([])
-    if (!dirtyRef.current) setOpenFile(null)
-  }, [config?.activeWorkspace])
+    const paths = new Set(known.split(' ').filter(Boolean))
+    setFilesProject((cur) => (cur && !paths.has(cur) ? null : cur))
+    setOpenFile((cur) => {
+      if (!cur || paths.has(cur.project)) return cur
+      // 有未保存改动就先留着,让人自己决定 —— 悄悄关掉就是丢东西
+      return dirtyRef.current ? cur : null
+    })
+  }, [known])
 
   /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
   async function openSession(projectPath: string, sessionId: string): Promise<void> {
@@ -465,12 +477,22 @@ export default function App(): React.JSX.Element {
    * 刷新时消失、答完又冒出来」这种闪烁。
    */
   const sidebarSessions = ((): Record<string, SessionListItem[]> => {
-    if (!pendingSession) return sessionsByProject
-    const rows = sessionsByProject[pendingSession.path] ?? []
+    // 先把删掉的划走,再考虑要不要补占位
+    const base =
+      deletedSessions.length === 0
+        ? sessionsByProject
+        : Object.fromEntries(
+            Object.entries(sessionsByProject).map(([p, rows]) => [
+              p,
+              rows.filter((s) => !deletedSessions.includes(s.sessionId)),
+            ]),
+          )
+    if (!pendingSession) return base
+    const rows = base[pendingSession.path] ?? []
     const id = activeSession
-    if (id && rows.some((s) => s.sessionId === id)) return sessionsByProject
+    if (id && rows.some((s) => s.sessionId === id)) return base
     return {
-      ...sessionsByProject,
+      ...base,
       [pendingSession.path]: [
         {
           sessionId: id ?? '__pending__',
@@ -487,13 +509,18 @@ export default function App(): React.JSX.Element {
     ? (sidebarSessions[config.activeWorkspace] ?? [])
     : []
 
+  /** 中栏开着没有 —— 树和文件都算 */
+  const midOpen = openFile !== null || filesProject !== null
+  const projectNameOf = (path: string): string =>
+    config?.projects.find((p) => p.path === path)?.name ?? path
+
   // 窗口左边缘就是 shell 的左边缘(没有更外层的容器),所以 clientX 直接
   // 就是侧栏宽度;中栏那道线要先减掉侧栏。
   function resizeSidebar(px: number): void {
     const next = clampSidebar(px, {
       viewport: window.innerWidth,
       midcol: widths.midcol,
-      midOpen: openFile !== null,
+      midOpen,
     })
     const w = { ...widths, sidebar: next }
     setWidths(w)
@@ -509,7 +536,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div
-      className={`shell${openFile ? ' with-mid' : ''}`}
+      className={`shell${midOpen ? ' with-mid' : ''}`}
       // 覆盖 styles.css 里的默认值。写在这一层而不是每栏各写各的,
       // 是因为中栏关着时布局也要跟着变,统一由 grid 的模板表达。
       style={
@@ -540,24 +567,20 @@ export default function App(): React.JSX.Element {
         onToggleCollapse={async (path, collapsed) => {
           setConfig(await window.api.projects.collapse(path, collapsed))
         }}
-        onExpandAll={(path) => setExpandedAll((e) => ({ ...e, [path]: true }))}
+        onExpandAll={(path) => setExpandedAll((e) => ({ ...e, [path]: !e[path] }))}
         onAddProject={async () => {
           const cfg = await window.api.projects.add()
           setConfig(cfg)
           await refreshSessions()
         }}
         onManageProjects={() => setPhase('projects')}
-        claudeEntries={claudeEntries}
-        openFile={openFile?.path ?? null}
-        claudeOpen={claudeOpen}
-        onToggleClaude={async () => {
-          const next = !claudeOpen
-          setClaudeOpen(next)
-          if (next) setClaudeEntries(await window.api.claude.list())
+        filesProject={filesProject}
+        onOpenFiles={(path) => {
+          // 再点一次收起。切到另一个项目时,已经打开的文件要跟着让位 ——
+          // 否则会出现「树是 A 项目的、右边开着 B 项目的文件」
+          setOpenFile(null)
+          setFilesProject((cur) => (cur === path ? null : path))
         }}
-        onOpenFile={(relPath) =>
-          config?.activeWorkspace && setOpenFile({ project: config.activeWorkspace, path: relPath })
-        }
         theme={config?.theme ?? 'system'}
         onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
       />
@@ -569,25 +592,37 @@ export default function App(): React.JSX.Element {
         onDrag={(x) => resizeSidebar(x)}
         onNudge={(d) => resizeSidebar(widths.sidebar + d)}
       />
-      {openFile && (
+      {midOpen && (
         <Resizer
           className="resizer-midcol"
-          label="调整配置栏宽度"
+          label="调整文件栏宽度"
           onDrag={(x) => resizeMidcol(x - widths.sidebar)}
           onNudge={(d) => resizeMidcol(widths.midcol + d)}
         />
       )}
 
-      {openFile && (
+      {/* 中栏两种形态:开着某个文件就看文件,否则看这个项目的文件树 */}
+      {openFile ? (
         <MidColumn
           projectPath={openFile.project}
-          projectName={
-            config?.projects.find((p) => p.path === openFile.project)?.name ?? openFile.project
-          }
+          projectName={projectNameOf(openFile.project)}
           relPath={openFile.path}
-          onClose={() => setOpenFile(null)}
+          onClose={() => {
+            setOpenFile(null)
+            setFilesProject(null)
+          }}
+          onBack={filesProject ? () => setOpenFile(null) : undefined}
           onDirtyChange={setFileDirty}
         />
+      ) : (
+        filesProject && (
+          <FileTree
+            projectPath={filesProject}
+            projectName={projectNameOf(filesProject)}
+            onClose={() => setFilesProject(null)}
+            onOpenFile={(relPath) => setOpenFile({ project: filesProject, path: relPath })}
+          />
+        )
       )}
 
       <main className="main">
@@ -601,6 +636,24 @@ export default function App(): React.JSX.Element {
           <span className="title">
             {activeSessions.find((s) => s.sessionId === activeSession)?.title ?? '新会话'}
           </span>
+          {/* 文件入口在这儿也放一个:侧栏那个挂在项目下,这个对的是「当前这个会话
+              在哪个目录里干活」—— 边聊边翻文件时,手不用跑到侧栏去 */}
+          {config?.activeWorkspace && (
+            <button
+              className="crumb-files"
+              aria-current={filesProject === config.activeWorkspace}
+              title="浏览这个项目的文件"
+              onClick={() => {
+                const path = config.activeWorkspace
+                if (!path) return
+                setOpenFile(null)
+                setFilesProject((cur) => (cur === path ? null : path))
+              }}
+            >
+              <FolderIcon size={12} />
+              文件
+            </button>
+          )}
         </div>
 
         <div className="transcript" ref={transcriptRef}>
@@ -916,9 +969,13 @@ export default function App(): React.JSX.Element {
             setMenu(null)
           }}
           onDelete={async () => {
-            await window.api.sessions.remove(menu.session.sessionId)
+            const gone = menu.session.sessionId
+            // 先在本地划掉再去删:等 store 反映出来要一会儿,
+            // 那段时间里「点了删除但它还在」比慢一点更让人不安
+            setDeletedSessions((ids) => [...ids, gone])
             setMenu(null)
-            if (menu.session.sessionId === activeSession) await newSession()
+            await window.api.sessions.remove(gone)
+            if (gone === activeSession) await newSession()
             await refreshSessions()
           }}
         />
