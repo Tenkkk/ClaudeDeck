@@ -21,11 +21,14 @@ export default function Thinking({
   status,
   outputTokens,
   streaming,
+  effort,
 }: {
   since: number
   status: TurnStatus
   outputTokens: number
   streaming: boolean
+  /** 努力档的中文名。终端里这一行也会带上它,因为它直接决定你要等多久 */
+  effort?: string
 }): React.JSX.Element {
   const [now, setNow] = useState(() => Date.now())
 
@@ -42,13 +45,19 @@ export default function Thinking({
   const label =
     status === 'compacting' ? '正在压缩上下文' : streaming ? '输出中' : status === 'requesting' ? '思考中' : '处理中'
 
+  /** 上千了就写成 1.9k —— 四位数字每秒变一次太吵 */
+  function formatTokens(n: number): string {
+    return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+  }
+
   return (
     <div className="thinking" role="status" aria-live="polite">
       <span className="brand-dot breathing" />
       <span className="thinking-label">{label}</span>
       <span className="thinking-meta">
         {elapsed}
-        {outputTokens > 0 && ` · ${outputTokens} tokens`}
+        {outputTokens > 0 && ` · ↓ ${formatTokens(outputTokens)} tokens`}
+        {effort && ` · ${effort}努力`}
       </span>
     </div>
   )

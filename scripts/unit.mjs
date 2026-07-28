@@ -13,6 +13,7 @@ import { askCardFromPayload, askAnswerPatch, planCardFromPayload } from '../src/
 import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 import { bundledExecutablePath } from '../src/main/binary.ts'
 import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
+import { parseMarkdown, parseInline } from '../src/renderer/src/lib/markdown.ts'
 
 let passed = 0
 let failed = 0
@@ -341,6 +342,60 @@ console.log('\nclaudedir —— JSON 写坏要在保存前拦住并指出行号'
     1000 - 264 - CHAT_MIN,
   )
   eq('返回整数像素', Number.isInteger(clampMidcol(333.7, { viewport: 1600, sidebar: 264 })), true)
+}
+
+// ---- Markdown 解析 ---------------------------------------------------------
+// 手写解析器最容易栽在边界上,所以这一段写得比别处密。
+console.log('\nmarkdown —— 正文解析')
+{
+  const kinds = (src) => parseMarkdown(src).map((b) => b.kind).join(',')
+
+  eq('标题', kinds('## 标题'), 'heading')
+  eq('标题层级', parseMarkdown('### 三级')[0].level, 3)
+  eq('分隔线', kinds('---'), 'hr')
+  eq('引用', kinds('> 一句话'), 'quote')
+  eq('无序列表', kinds('- 甲\n- 乙'), 'list')
+  eq('有序列表', kinds('1. 甲\n2. 乙'), 'list')
+  eq('有序列表记住起始号', parseMarkdown('3. 丙\n4. 丁')[0].start, 3)
+  eq('列表项数', parseMarkdown('- 甲\n- 乙\n- 丙')[0].items.length, 3)
+  eq('嵌套一层', parseMarkdown('- 甲\n  - 甲一')[0].items[0].children.length, 1)
+
+  // 代码块:块内的一切都不再当 Markdown
+  const code = parseMarkdown('```json\n{\n  "a": 1\n}\n```')[0]
+  eq('围栏代码块', code.kind, 'code')
+  eq('记住语言', code.lang, 'json')
+  eq('原样保留块内内容', code.text, '{\n  "a": 1\n}')
+  eq('块内的 # 不当标题', parseMarkdown('```\n# 不是标题\n```')[0].text, '# 不是标题')
+  // 流式渲染时代码块常常是半截的,不能因为没闭合就整块吃掉
+  eq('没闭合也成块', parseMarkdown('```sh\nnpm run build')[0].text, 'npm run build')
+
+  // 表格
+  const table = parseMarkdown('| 甲 | 乙 |\n|---|---|\n| 1 | 2 |')[0]
+  eq('表格', table.kind, 'table')
+  eq('表头两列', table.head.length, 2)
+  eq('一行数据', table.rows.length, 1)
+
+  // 行内
+  const inline = (src) => parseInline(src).map((n) => n.kind).join(',')
+  eq('粗体', inline('**重要**'), 'strong')
+  eq('斜体', inline('*轻*'), 'em')
+  eq('删除线', inline('~~划掉~~'), 'del')
+  eq('行内代码', inline('`npm run build`'), 'code')
+  eq('链接', inline('[点这里](https://example.com)'), 'link')
+  eq('链接取到 href', parseInline('[x](https://example.com)')[0].href, 'https://example.com')
+  eq('混排顺序', inline('前 **粗** 后'), 'text,strong,text')
+
+  // 反引号里的星号是字面量,不能当粗体 —— 行内代码必须先切
+  eq('代码里的星号不当粗体', inline('`**不是粗体**`'), 'code')
+  eq('代码内容原样', parseInline('`**x**`')[0].text, '**x**')
+
+  // 下划线在标识符中间不该触发斜体,否则 snake_case 会被吃掉半截
+  eq('标识符里的下划线不当斜体', inline('some_long_name'), 'text')
+
+  // 认不出的东西一律当文本,绝不吃内容
+  eq('孤立的星号原样保留', parseInline('2 * 3 = 6')[0].text, '2 * 3 = 6')
+  eq('空串不产出节点', parseInline('').length, 0)
+  eq('HTML 当字面文本', parseInline('<script>x</script>')[0].kind, 'text')
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import ContextRing from './ContextRing.js'
 import Popover from './Popover.js'
 import TaskChip from './TaskChip.js'
 import {
@@ -6,8 +7,10 @@ import {
   PERMISSION_MODES,
   type EffortLevel,
   type BackgroundTask,
+  type ContextUsage,
   type ModelOption,
   type PermissionMode,
+  type UsageInfo,
 } from '../../../shared/ipc.js'
 
 /**
@@ -36,6 +39,9 @@ export default function ControlBar({
   onStopAllTasks,
   requestOpen,
   onRequestHandled,
+  context,
+  usage,
+  contextWarnAt,
 }: {
   mode: PermissionMode
   models: ModelOption[]
@@ -55,6 +61,9 @@ export default function ControlBar({
   /** 输入框里敲 /model、/effort 时由外面点开对应浮层 —— 见 App 的 UI_COMMANDS */
   requestOpen?: 'model' | 'effort' | null
   onRequestHandled?: () => void
+  context: ContextUsage | null
+  usage: UsageInfo | null
+  contextWarnAt: number
 }): React.JSX.Element {
   const [open, setOpen] = useState<null | 'mode' | 'model' | 'effort'>(null)
   const toggle = (k: 'mode' | 'model' | 'effort'): void => setOpen((o) => (o === k ? null : k))
@@ -143,6 +152,9 @@ export default function ControlBar({
           ))}
         </Popover>
       </div>
+
+      {/* 上下文环紧挨着权限:两者都是「发这条之前要知道的事」 */}
+      <ContextRing context={context} usage={usage} warnAt={contextWarnAt} />
 
       {/* 子进程胶囊插在权限右边;没有后台任务时整颗消失 · §11 */}
       <TaskChip tasks={tasks} onStop={onStopTask} onStopAll={onStopAllTasks} />

@@ -73,6 +73,7 @@ const api = {
   app: {
     versions: (): Promise<Versions> => ipcRenderer.invoke('app:versions'),
     openProject: (path: string): Promise<string> => ipcRenderer.invoke('shell:openProject', path),
+    openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
   },
   chat: {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),

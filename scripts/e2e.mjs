@@ -97,7 +97,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/10] 进程桥接')
+  console.log('[0/11] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -113,7 +113,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/10] 聊天')
+  console.log('\n[1/11] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -130,7 +130,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/10] 切换模型')
+  console.log('\n[2/11] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -169,7 +169,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/10] 会话列表与切换')
+  console.log('\n[3/11] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -211,7 +211,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/10] 工具行')
+  console.log('\n[4/11] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -264,7 +264,7 @@ try {
   check('每条消息都带复制动作', copyBtns.length > 0, `${copyBtns.length} 个`)
 
   // ---- 斜杠命令面板 · §15 -------------------------------------------------
-  console.log('\n[5/10] 斜杠命令面板')
+  console.log('\n[5/11] 斜杠命令面板')
   await settle(page)
   await page.fill('.composer textarea', '/')
   const opened = await page
@@ -307,7 +307,7 @@ try {
   }
 
   // ---- 从这条重答:分支与文件回退 · §12 -----------------------------------
-  console.log('\n[6/10] 分支与文件回退')
+  console.log('\n[6/11] 分支与文件回退')
   // 消息 id 是每轮结束后从 store 重载才有的 —— 直播流里的用户消息不带 uuid
   const forkable = await page
     .waitForFunction(
@@ -351,7 +351,7 @@ try {
 
   // ---- .claude 配置栏 · §10 ----------------------------------------------
   // 这一节纯文件读写,不产生 API 调用
-  console.log('\n[7/10] .claude 配置栏')
+  console.log('\n[7/11] .claude 配置栏')
   await page.click('.claude-node')
   await page.waitForSelector('.claude-file', { timeout: 10_000 })
   const files = await page.$$eval('.claude-file .mono', (n) => n.map((e) => e.textContent?.trim()))
@@ -408,7 +408,7 @@ try {
   check('选「不保存」后中栏关闭', true)
 
   // ---- 会话右键菜单 · §08 ------------------------------------------------
-  console.log('\n[8/10] 会话右键菜单')
+  console.log('\n[8/11] 会话右键菜单')
   await page.click('.sidebar-scroll .session-row', { button: 'right' })
   await page.waitForSelector('.ctx', { timeout: 10_000 })
   const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>
@@ -465,7 +465,7 @@ try {
 
   // ---- 实测反馈的七项 ------------------------------------------------------
   // 这一节全是用户装完之后逐条指出来的问题。钉在这儿,免得下次又要靠手点才发现。
-  console.log('\n[9/10] 实测反馈的七项')
+  console.log('\n[9/11] 实测反馈的七项')
 
   // 1 模型弹层:有描述,没有那列没意义的编号
   await page.click('[data-control="model"]')
@@ -569,7 +569,7 @@ try {
   // 这条以前是「实现了但触发不到」。实测发现它根本不走 onUserDialog,而是走
   // canUseTool —— 直接放行的话工具就在无人作答的情况下跑完,模型收到
   // "The user did not answer the questions."。这一节就是钉住那条通道。
-  console.log('\n[10/10] Claude 反问你')
+  console.log('\n[10/11] Claude 反问你')
   await page.fill(
     '.composer textarea',
     '用 AskUserQuestion 问我一个问题,两个选项,第一个选项的 label 必须是「甲方案」。只做这一件事,不要解释。',
@@ -619,6 +619,39 @@ try {
   const mcpText = await page.$$eval('.msg-claude', (n) => n[n.length - 1]?.textContent ?? '')
   check('/mcp 有回复,不是石沉大海', answered && /MCP/i.test(mcpText), mcpText.trim().slice(0, 70))
   await settle(page)
+
+  // ---- 正文排版 --------------------------------------------------------------
+  // 以前整块是纯文本,**粗体**、列表、```代码块``` 的原始符号直接印在界面上。
+  console.log('\n[11/11] 正文排版与思考')
+  await page.fill(
+    '.composer textarea',
+    '直接输出这段 Markdown,不要解释、不要加别的内容:\n\n一句**加粗**的话。\n\n- 甲\n- 乙\n\n```js\nconst a = 1\n```',
+  )
+  await page.click('.composer [data-state="send"]')
+  await settle(page)
+
+  const strongs = await page.$$eval('.msg-claude strong', (n) => n.map((e) => e.textContent))
+  check('粗体真的加粗了', strongs.length > 0, strongs.join(','))
+  const bullets = await page.$$eval('.msg-claude .md-list li', (n) => n.length)
+  check('列表画成了列表', bullets >= 2, `${bullets} 项`)
+  const code = await page.$$eval('.msg-claude .md-code code', (n) => n.map((e) => e.textContent))
+  check('代码块单独成块', code.length > 0, code.join('').trim().slice(0, 30))
+  const copyBtn = await page.$$eval('.md-code-copy', (n) => n.length)
+  check('代码块带复制', copyBtn > 0)
+  // 原始符号不该再出现在正文里
+  const raw = await page.$eval('.msg-claude', (e) => e.textContent ?? '')
+  check('界面上不再出现原始 ** 与 ```', !raw.includes('**') && !raw.includes('```'), raw.slice(0, 40))
+
+  // 上下文环取代了归属行里那行字
+  const oldCtx = await page.$$eval('.crumb .context', (n) => n.length)
+  check('归属行不再挂上下文百分比', oldCtx === 0)
+  const ring = await page.$$eval('.ctx-ring', (n) => n.length)
+  check('输入框旁出现上下文环', ring === 1)
+  await page.click('.ctx-ring')
+  await page.waitForSelector('.ctx-row-item', { timeout: 10_000 })
+  const cats = await page.$$eval('.ctx-name', (n) => n.map((e) => e.textContent?.trim()))
+  check('浮窗列出分类明细', cats.length >= 3, cats.slice(0, 4).join(' / '))
+  await page.keyboard.press('Escape')
 } catch (err) {
   failed++
   console.error('\n异常:', err?.message ?? err)

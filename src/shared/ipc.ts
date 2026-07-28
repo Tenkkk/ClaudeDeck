@@ -98,6 +98,21 @@ export interface ContextUsage {
   percentage: number
   totalTokens: number
   maxTokens: number
+  /**
+   * 上下文都被谁占了。SDK 一直给这份明细(连配色都给了),此前只取了个百分比 ——
+   * 「80%」告诉你快满了,但告诉不了你该删什么;这份明细才能。
+   *
+   * `deferred` 的那几项是还没加载进来的工具定义,不占当前窗口,单列。
+   */
+  categories: ContextCategory[]
+}
+
+export interface ContextCategory {
+  name: string
+  tokens: number
+  /** SDK 给的十六进制色。只用于这一处的色块,不进设计 token */
+  color: string
+  deferred: boolean
 }
 
 export interface Versions {
@@ -320,6 +335,8 @@ export type TranscriptItem =
   | { kind: 'user'; text: string; ts?: number; id?: string }
   | { kind: 'assistant'; text: string; ts?: number; id?: string }
   | { kind: 'tool'; row: ToolRow }
+  /** Claude 回答之前的思考。默认折叠 —— 想看的时候才看 */
+  | { kind: 'thinking'; text: string }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
 /** 与 SDK 的 SDKStatus 一致 —— 不自己另立一套状态机 */
@@ -328,6 +345,11 @@ export type TurnStatus = 'compacting' | 'requesting' | null
 export type ChatEvent =
   | { type: 'session'; sessionId: string }
   | { type: 'delta'; text: string }
+  /**
+   * 思考流。要 options.thinking = {type:'adaptive', display:'summarized'} 才有 ——
+   * 只给 effort 是拿不到的(实测)。
+   */
+  | { type: 'thinking'; text: string }
   /** A tool call started. Carries everything known at request time. */
   | { type: 'tool'; row: ToolRow }
   /** The same row again once its result arrived — replace by `row.id`. */

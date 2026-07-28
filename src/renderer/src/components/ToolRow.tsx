@@ -40,18 +40,40 @@ function BashRow({ row }: { row: Extract<Row, { tool: 'bash' }> }): React.JSX.El
   const hasOutput = output.length > 0
   const warn = row.interrupted === true || Boolean(row.stderr?.trim())
 
+  /*
+   * 多行命令必须整段摊开。
+   *
+   * 原先不管几行都压进一行、超出用省略号截掉 —— 一条 cd + export + 三个 grep
+   * 的命令,界面上只看得到 `cd /d/Code/...`,而真正会动你机器的是后面那几行。
+   * 要批准一件事,总得先看得见它。所以:单行照旧内联,多行另起一块全展开。
+   */
+  const command = row.command.trimEnd()
+  const multiline = command.includes('\n')
+  const headline = multiline ? (row.description ?? `${command.split('\n').length} 行命令`) : command
+
   return (
     <div className={`tool-block${warn ? ' warn' : ''}`}>
       <div className="tool-row">
         <span className="tool-name">Bash</span>
         <span className="tool-sep">·</span>
-        <span className="tool-arg">{row.interrupted ? '已中断' : row.command}</span>
+        <span className="tool-arg">{row.interrupted ? '已中断' : headline}</span>
         {hasOutput && (
           <button className="tool-toggle" onClick={() => setOpen((v) => !v)}>
             {open ? '收起' : '展开'}
           </button>
         )}
       </div>
+      {multiline && !row.interrupted && (
+        <pre className="tool-cmd">
+          {command.split('\n').map((l, i) => (
+            <span key={i} className="tool-cmd-line">
+              {/* 只有第一行给提示符 —— 每行都画 $ 会让人以为这是几条独立命令 */}
+              <span className="tool-cmd-mark">{i === 0 ? '$' : ' '}</span>
+              {l}
+            </span>
+          ))}
+        </pre>
+      )}
       {open && hasOutput && <pre className="tool-output">{output}</pre>}
     </div>
   )

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Markdown from './Markdown.js'
 
 /**
  * 一条消息 —— 设计终稿 §06。
@@ -32,7 +33,11 @@ export default function Message({
 
   return (
     <div className={`msg-wrap${role === 'user' ? ' user' : ''}`}>
-      <div className={role === 'user' ? 'msg-user' : 'msg-claude'}>{text}</div>
+      {/* 用户自己打的字保持原样 —— 他打的就是他想说的,不该被当标记语言重排。
+          Claude 的正文才走 Markdown。 */}
+      <div className={role === 'user' ? 'msg-user' : 'msg-claude'}>
+        {role === 'user' ? text : <Markdown text={text} />}
+      </div>
       <div className="msg-slot">
         <button
           className="msg-action"

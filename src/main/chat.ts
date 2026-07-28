@@ -141,6 +141,9 @@ export class ChatSession {
         effort: opts.effort,
         permissionMode: opts.permissionMode,
         includePartialMessages: true,
+        // 不写这条就完全拿不到思考流 —— 只设 effort 是没有的(实测)。
+        // summarized 是 Claude Code 自己也在用的那档:给要点,不是逐字原文。
+        thinking: { type: 'adaptive', display: 'summarized' },
         // 注意:brief §6 把 askUserQuestionTimeout 也列进了这里,但它属于
         // Settings(.claude/settings.json),不是 Options —— 传进来编译不过。
         toolConfig: { askUserQuestion: { previewFormat: 'html' } },
@@ -280,12 +283,19 @@ export class ChatSession {
     if (msg.type === 'stream_event') {
       const event = msg.event as {
         type?: string
-        delta?: { type?: string; text?: string }
+        delta?: { type?: string; text?: string; thinking?: string }
         usage?: { output_tokens?: number }
       }
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
         this.streamedText = true
         this.emit({ type: 'delta', text: event.delta.text })
+      }
+      if (
+        event.type === 'content_block_delta' &&
+        event.delta?.type === 'thinking_delta' &&
+        event.delta.thinking
+      ) {
+        this.emit({ type: 'thinking', text: event.delta.thinking })
       }
       // usage 只在每条助手消息收尾时出现一次。一轮里若有工具往返就会有多条
       // 助手消息,所以这里累加,而不是直接取最后一条的值。
@@ -449,6 +459,12 @@ export class ChatSession {
         percentage: r.percentage,
         totalTokens: r.totalTokens,
         maxTokens: r.maxTokens,
+        categories: (r.categories ?? []).map((c) => ({
+          name: c.name,
+          tokens: c.tokens,
+          color: c.color,
+          deferred: c.isDeferred === true,
+        })),
       }
     } catch {
       return null

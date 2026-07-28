@@ -984,17 +984,117 @@ kbd,
   white-space: nowrap;
 }
 
-.crumb .context {
-  margin-left: auto;
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--text-mono-m);
-  color: var(--muted);
+/* ---- 上下文环:输入框左下角,紧挨权限 ---- */
+
+.ctx-ring {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  padding: var(--s4);
+  border-radius: var(--r-pill);
 }
 
-/* 过 80% 转警示色 —— 自动压缩唯一的预告 */
-.crumb .context.warn {
-  color: var(--warn);
+.ctx-ring:hover {
+  background: var(--bg);
+}
+
+.ctx-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s8);
+  padding: var(--s6) var(--s12) var(--s4);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.ctx-head-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+/* 分段总条:每段就是一个分类,和下面每行的色点同色 */
+.ctx-bar {
+  display: flex;
+  height: 6px;
+  margin: var(--s4) var(--s12) var(--s8);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--border);
+}
+
+.ctx-row-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s2) var(--s12);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.ctx-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.ctx-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* token 数与百分比各自定宽右对齐 —— 不定宽的话每次刷新两列都在跳 */
+.ctx-tokens,
+.ctx-pct {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ctx-tokens {
+  min-width: 48px;
+}
+
+.ctx-pct {
+  min-width: 42px;
+  color: var(--ink-2);
+}
+
+.ctx-limit {
+  padding: var(--s4) var(--s12) var(--s6);
+}
+
+.ctx-limit-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.ctx-limit-bar {
+  height: 4px;
+  margin-top: var(--s4);
+  border-radius: var(--r-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.ctx-limit-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.ctx-limit .hint {
+  margin-top: var(--s2);
 }
 
 /* ---- 对话区 ---- */
@@ -1027,7 +1127,161 @@ kbd,
   font-family: var(--font-prose);
   font-size: var(--text-prose);
   line-height: var(--leading-prose);
+}
+
+/* ---- Markdown 正文 ----
+ *
+ * 以前整块是 white-space: pre-wrap 的纯文本,所以 **粗体**、列表、```代码块```
+ * 的原始符号全都直接印在界面上。现在结构由解析器给出,换行交给块级元素,
+ * 只有代码块内部还需要保留空白。 */
+
+.md > *:first-child {
+  margin-top: 0;
+}
+
+.md > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-p {
+  margin: 0 0 var(--s12);
+  /* 段内的手动换行要留住 —— 模型常用它排版;段间空行已由块结构表达 */
   white-space: pre-wrap;
+}
+
+.md-h {
+  margin: var(--s16) 0 var(--s8);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* 气泡里不需要三档跳跃的字号,层级靠粗细和一点点大小差 */
+.md-h1 {
+  font-size: 1.12em;
+}
+
+.md-h2 {
+  font-size: 1.06em;
+}
+
+.md-h3 {
+  font-size: 1em;
+  color: var(--ink-2);
+}
+
+.md-list {
+  margin: 0 0 var(--s12);
+  padding-left: var(--s20);
+}
+
+.md-list li {
+  margin: var(--s4) 0;
+}
+
+.md-list .md-list {
+  margin: var(--s4) 0 0;
+}
+
+.md-quote {
+  margin: 0 0 var(--s12);
+  padding: var(--s4) 0 var(--s4) var(--s12);
+  border-left: 2px solid var(--border);
+  color: var(--ink-2);
+}
+
+.md-hr {
+  margin: var(--s16) 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.md-inline-code {
+  font-family: var(--font-mono);
+  /* 等宽字比衬线正文显得大,压一档才和周围齐平 */
+  font-size: 0.86em;
+  padding: 1px 4px;
+  border-radius: var(--r-inline);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.md-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- 代码块 ---- */
+
+.md-code {
+  margin: 0 0 var(--s12);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s4) var(--s8) var(--s4) var(--s12);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-2);
+}
+
+.md-code-copy {
+  border: none;
+  background: transparent;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  padding: var(--s2) var(--s6);
+}
+
+.md-code-copy:hover {
+  color: var(--ink-2);
+}
+
+.md-code pre {
+  margin: 0;
+  padding: var(--s12);
+  overflow-x: auto;
+}
+
+.md-code code {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre;
+}
+
+/* ---- 表格 ---- */
+
+.md-table-wrap {
+  margin: 0 0 var(--s12);
+  overflow-x: auto;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-m);
+}
+
+.md-table th,
+.md-table td {
+  border: 1px solid var(--border);
+  padding: var(--s4) var(--s8);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-table th {
+  background: var(--bg);
+  font-weight: 600;
 }
 
 /* §06:每条下面常留 20px 空槽,悬停出动作行时内容不跳动 */
@@ -1146,6 +1400,33 @@ kbd,
 }
 
 /* 输出块不画边框,只用一层浅底把它和正文分开 */
+/* 多行命令原文。和输出同一套外观,但左侧那道竖线区分「这是要跑的」和
+   「这是跑出来的」 */
+.tool-cmd {
+  margin: var(--s6) 0 0 22px;
+  padding: var(--s8) var(--s12);
+  border-left: 2px solid var(--border);
+  background: var(--bg);
+  border-radius: 0 var(--r-control) var(--r-control) 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-height: 260px;
+  overflow: auto;
+}
+
+.tool-cmd-line {
+  display: block;
+  white-space: pre;
+}
+
+.tool-cmd-mark {
+  display: inline-block;
+  width: 1.2em;
+  color: var(--muted-2);
+}
+
 .tool-output {
   margin: var(--s6) 0 0 22px;
   font-family: var(--font-mono);
@@ -1324,6 +1605,61 @@ kbd,
 
 .session-empty {
   padding: var(--s8) var(--s12) var(--s8) calc(var(--s16) + var(--s12));
+}
+
+/* ---- 思考 ----
+ * 灰、窄、默认折叠 —— 它是过程不是结论,不该和回答抢注意力。 */
+
+.thought {
+  max-width: var(--w-prose);
+  margin: 0 0 var(--s8);
+}
+
+.thought-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--s4) 0;
+  text-align: left;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.thought-head:hover {
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.thought-caret {
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+}
+
+.thought-caret.open {
+  transform: rotate(0deg);
+}
+
+/* 折叠时露的那一行:必须能被挤掉,否则窄窗口下会把箭头顶出去 */
+.thought-peek {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: var(--muted-2);
+}
+
+.thought-body {
+  margin-left: var(--s16);
+  padding-left: var(--s12);
+  border-left: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--muted);
+  white-space: pre-wrap;
 }
 
 /* ---- 等待态:忙着但还没开口的那段 ---- */

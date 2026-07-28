@@ -279,6 +279,23 @@ function registerIpc(): void {
   /** 在资源管理器里打开项目目录(§08 右键菜单)。 */
   ipcMain.handle('shell:openProject', (_e, path: string) => shell.openPath(path))
 
+  /**
+   * 正文里的链接交给系统浏览器 —— 应用窗口里没有地址栏,真导航过去就回不来了。
+   *
+   * **只放行 http / https。** 这里的 url 来自模型输出,是不可信输入:
+   * `file:`、`ms-msdt:` 这类协议交给 shell 会直接启动本机程序。
+   */
+  ipcMain.handle('shell:openExternal', (_e, url: string) => {
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return
+    void shell.openExternal(parsed.href)
+  })
+
   // .claude 配置栏 · §10。范围锁在 claudedir.ts 里,渲染层传来的路径一律不信。
   ipcMain.handle('claude:list', (): ClaudeEntry[] => {
     const path = getConfig().activeWorkspace

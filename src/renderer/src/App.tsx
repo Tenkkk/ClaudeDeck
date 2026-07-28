@@ -10,14 +10,17 @@ import MidColumn from './components/MidColumn.js'
 import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
+import Markdown from './components/Markdown.js'
 import Resizer from './components/Resizer.js'
 import { clampMidcol, clampSidebar, loadWidths, saveWidths } from './lib/columns.js'
 import Thinking from './components/Thinking.js'
+import Thought from './components/Thought.js'
 import ToolRow from './components/ToolRow.js'
 import Loading from './screens/Loading.js'
 import Onboarding from './screens/Onboarding.js'
 import ProjectPicker from './screens/ProjectPicker.js'
 import {
+  EFFORT_LEVELS,
   type AppConfig,
   type ChatEvent,
   type ContextUsage,
@@ -88,6 +91,7 @@ export default function App(): React.JSX.Element {
   const [activeSession, setActiveSession] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptItem[]>([])
   const [streaming, setStreaming] = useState('')
+  const [thinking, setThinking] = useState('')
   const [busy, setBusy] = useState(false)
   const [models, setModels] = useState<ModelOption[]>([])
   const [usage, setUsage] = useState<UsageInfo | null>(null)
@@ -137,11 +141,14 @@ export default function App(): React.JSX.Element {
     const sid = activeSessionRef.current
     if (!sid) return
     const stored = await window.api.sessions.history(sid)
-    const ids = stored.flatMap((i) => (i.kind === 'tool' ? [] : [i.id]))
+    // 正面列举哪几种带 id —— 写成「不是 tool 就有」的话,以后每加一种
+    // 不带 id 的条目(比如思考)都会把这里的对位错开一格
+    const hasId = (k: TranscriptItem['kind']): boolean => k === 'user' || k === 'assistant'
+    const ids = stored.flatMap((i) => (hasId(i.kind) && 'id' in i ? [i.id] : []))
     setTranscript((cur) => {
       let n = -1
       return cur.map((item) => {
-        if (item.kind === 'tool') return item
+        if (!hasId(item.kind) || !('id' in item)) return item
         n += 1
         const id = ids[n]
         return id && !item.id ? { ...item, id } : item
@@ -187,10 +194,21 @@ export default function App(): React.JSX.Element {
         // 第一条消息上就有了,这时 SDK 的 store 里已经落了盘,列得出来。
         // 标题是 Claude 生成的,会晚一点变 —— done 时再刷一次盖上去。
         void refreshSessions()
+      } else if (event.type === 'thinking') {
+        setThinking((t) => t + event.text)
       } else if (event.type === 'delta') {
+        // 正文一开口,思考就该定下来落进对话流 —— 它属于这一段回答之前
+        setThinking((t) => {
+          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
+          return ''
+        })
         setStreaming((s) => s + event.text)
       } else if (event.type === 'tool') {
         // 工具行插在正文之间,所以先把已经流出来的文字定下来
+        setThinking((t) => {
+          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
+          return ''
+        })
         setStreaming((s) => {
           if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
           return ''
@@ -219,6 +237,11 @@ export default function App(): React.JSX.Element {
           target: event.target,
         })
       } else if (event.type === 'done') {
+        // 只思考、没开口就结束的情况也要留下(比如全程在跑工具)
+        setThinking((t) => {
+          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
+          return ''
+        })
         setStreaming((s) => {
           if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
           return ''
@@ -389,7 +412,6 @@ export default function App(): React.JSX.Element {
   const activeSessions = config?.activeWorkspace
     ? (sessionsByProject[config.activeWorkspace] ?? [])
     : []
-  const contextWarn = (context?.percentage ?? 0) >= CONTEXT_WARN_AT
 
   // 窗口左边缘就是 shell 的左边缘(没有更外层的容器),所以 clientX 直接
   // 就是侧栏宽度;中栏那道线要先减掉侧栏。
@@ -494,7 +516,9 @@ export default function App(): React.JSX.Element {
       )}
 
       <main className="main">
-        {/* 归属行 · §05:项目 / 会话标题 / 上下文百分比 */}
+        {/* 归属行 · §05:项目 / 会话标题。
+            上下文占用挪去了输入框旁边的环 —— 它属于「发这条之前要知道的事」,
+            和权限、模型、努力是同一类,不该单独待在屏幕另一头。 */}
         <div className="crumb">
           <FolderIcon className="crumb-folder" />
           <span className="project">{activeProject?.name ?? '—'}</span>
@@ -502,11 +526,6 @@ export default function App(): React.JSX.Element {
           <span className="title">
             {activeSessions.find((s) => s.sessionId === activeSession)?.title ?? '新会话'}
           </span>
-          {context && (
-            <span className={`context${contextWarn ? ' warn' : ''}`}>
-              上下文 {Math.round(context.percentage)}%
-            </span>
-          )}
         </div>
 
         <div className="transcript" ref={transcriptRef}>
@@ -520,6 +539,8 @@ export default function App(): React.JSX.Element {
           {transcript.map((item, i) =>
             item.kind === 'tool' ? (
               <ToolRow key={`${item.row.id}-${i}`} row={item.row} />
+            ) : item.kind === 'thinking' ? (
+              <Thought key={i} text={item.text} />
             ) : (
               <Message
                 key={i}
@@ -532,11 +553,16 @@ export default function App(): React.JSX.Element {
             ),
           )}
 
+          {/* 正在想的那一段:自动展开,让人看着它在动 */}
+          {thinking && <Thought text={thinking} live />}
+
           {streaming && (
             <div className="msg-wrap">
               {/* 正在输出的那条不出动作行 · §06 */}
+              {/* 流式过程中也走 Markdown:半截的代码块、没闭合的粗体都要能画,
+                  不然文字会在收尾那一刻整段重排,读起来像闪了一下 */}
               <div className="msg-claude">
-                {streaming}
+                <Markdown text={streaming} />
                 <span className="stream-caret" />
               </div>
             </div>
@@ -549,6 +575,7 @@ export default function App(): React.JSX.Element {
               status={turnStatus}
               outputTokens={outputTokens}
               streaming={streaming.length > 0}
+              effort={EFFORT_LEVELS.find((e) => e.value === config?.effort)?.label}
             />
           )}
 
@@ -739,6 +766,9 @@ export default function App(): React.JSX.Element {
               busy={busy}
               effortSwitching={effortSwitching}
               canSend={Boolean(draft.trim())}
+              context={context}
+              usage={usage}
+              contextWarnAt={CONTEXT_WARN_AT}
               requestOpen={controlRequest}
               onRequestHandled={() => setControlRequest(null)}
               onMode={(v) => {
