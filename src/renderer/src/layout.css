@@ -395,21 +395,35 @@ kbd,
 }
 
 .sidebar-new {
-  padding: 0 var(--s12) var(--s12);
+  padding: 0 var(--s8) var(--s8);
 }
 
-.sidebar-new button {
+/* 一行安静的入口,不是主按钮 */
+.new-session {
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: var(--s8);
+  border: none;
+  background: transparent;
+  border-radius: var(--r-control);
+  padding: var(--s8) var(--s12);
+  color: var(--ink);
 }
 
-.sidebar-new kbd {
-  color: var(--surface);
-  opacity: 0.7;
+.new-session:hover {
+  background: var(--bg);
+}
+
+.new-session .label {
+  flex: 1;
+  text-align: left;
+}
+
+.new-session kbd {
+  font-family: var(--font-mono);
   font-size: var(--text-mono-s);
+  color: var(--muted-2);
 }
 
 .sidebar-scroll {
@@ -484,20 +498,17 @@ kbd,
   min-width: 0;
 }
 
-.project-add {
+/* 常显。终稿里它是侧栏上除「当前项」之外唯一带陶土的元件。
+   选择器要比 .icon-btn 更具体 —— 后者定义在下面,否则会把颜色盖回中性色。 */
+.project-line .project-add {
   flex: none;
-  opacity: 0;
-  transition: opacity 120ms ease;
-  color: var(--muted);
-}
-
-.project-line:hover .project-add {
-  opacity: 1;
-}
-
-.project-add:hover {
+  margin-right: var(--s8);
   color: var(--accent);
   background: var(--accent-tint);
+}
+
+.project-line .project-add:hover {
+  background: var(--bubble-hover);
 }
 
 .icon-btn {
@@ -564,8 +575,10 @@ kbd,
   background: var(--bg);
 }
 
+/* 当前会话:8px 圆角块 + 2px 陶土内条 + 一圈可见描边(§05) */
 .session-row[aria-current='true'] {
   background: var(--accent-tint);
+  border-color: var(--focus);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
@@ -613,10 +626,10 @@ kbd,
   gap: var(--s6);
 }
 
+/* 额度:标签在左,数值右对齐,中间一条竖线分隔两档(§05) */
 .quota {
   display: flex;
   align-items: baseline;
-  gap: var(--s12);
   font-size: var(--text-ui-s);
   color: var(--muted);
 }
@@ -626,6 +639,19 @@ kbd,
   font-size: var(--text-mono-s);
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+.quota .values {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+}
+
+.quota .divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
 }
 
 .quota .val {

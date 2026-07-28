@@ -43,20 +43,22 @@ export default function Sidebar({
 }): React.JSX.Element {
   return (
     <aside className="sidebar">
+      {/* 侧栏的品牌位不带圆点 —— 那颗呼吸点是加载态与空态的元件(§02),
+          不是常驻装饰。陶土只出现在三处:当前项、主按钮、等你决定的卡片。 */}
       <div className="sidebar-brand">
-        <span className="brand">
-          <span className="brand-dot" />
-          ClaudeDeck
-        </span>
+        <span className="brand">ClaudeDeck</span>
         {/* 跨会话搜索是终稿明确「没画」的一项(§09),这里先占位并说明 */}
         <button className="ghost icon-btn" title="搜索(尚未实现)" disabled>
           <SearchIcon />
         </button>
       </div>
 
+      {/* 新建会话是一行安静的入口,不是主按钮 —— 它不属于陶土的那三处 */}
       <div className="sidebar-new">
-        <button className="primary" onClick={onNewSession}>
-          ＋ 新建会话 <kbd>Ctrl N</kbd>
+        <button className="new-session" onClick={onNewSession}>
+          <PlusIcon size={13} />
+          <span className="label">新建会话</span>
+          <kbd>Ctrl N</kbd>
         </button>
       </div>
 
@@ -167,16 +169,21 @@ export default function Sidebar({
         {usage?.available && (
           <div className="quota">
             <span className="label">额度</span>
-            {usage.fiveHour !== null && (
-              <span title={usage.fiveHourResetsAt ? `${usage.fiveHourResetsAt} 重置` : undefined}>
-                5 小时 <span className="val">{Math.round(usage.fiveHour)}%</span>
-              </span>
-            )}
-            {usage.sevenDay !== null && (
-              <span title={usage.sevenDayResetsAt ? `${usage.sevenDayResetsAt} 重置` : undefined}>
-                7 天 <span className="val">{Math.round(usage.sevenDay)}%</span>
-              </span>
-            )}
+            <span className="values">
+              {usage.fiveHour !== null && (
+                <span title={usage.fiveHourResetsAt ? `${usage.fiveHourResetsAt} 重置` : undefined}>
+                  5 小时 <span className="val">{Math.round(usage.fiveHour)}%</span>
+                </span>
+              )}
+              {usage.fiveHour !== null && usage.sevenDay !== null && (
+                <span className="divider" aria-hidden="true" />
+              )}
+              {usage.sevenDay !== null && (
+                <span title={usage.sevenDayResetsAt ? `${usage.sevenDayResetsAt} 重置` : undefined}>
+                  7 天 <span className="val">{Math.round(usage.sevenDay)}%</span>
+                </span>
+              )}
+            </span>
           </div>
         )}
         <button className="version-row" title="主题与关于(第 7 步实现)">

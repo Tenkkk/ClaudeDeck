@@ -122,6 +122,30 @@ try {
   eq('正文封顶 = --w-prose', dims.prose, 720)
   eq('气泡封顶 = --w-bubble', dims.bubble, 560)
 
+  // §01:陶土只出现在三处(当前项、主按钮、等你决定的卡片)。
+  // 侧栏里就只剩「当前会话」和项目行的 ＋ —— 别的地方冒出陶土就是画错了。
+  // 这类偏差是 CSS 优先级悄悄盖掉造成的,肉眼很难发现,所以钉在这里。
+  console.log('\n侧栏配色 · §01 / §05')
+  const sb = await page.evaluate(() => {
+    const cs = (sel) => {
+      const el = document.querySelector(sel)
+      if (!el) return null
+      const s = getComputedStyle(el)
+      return { color: s.color, bg: s.backgroundColor }
+    }
+    return {
+      add: cs('.project-line .project-add'),
+      newSession: cs('.new-session'),
+      hasBrandDot: !!document.querySelector('.sidebar-brand .brand-dot'),
+    }
+  })
+  const ACCENT = 'rgb(167, 95, 56)'
+  const ACCENT_TINT = 'rgb(244, 237, 229)'
+  ok('项目 ＋ 用陶土色', sb.add?.color === ACCENT, sb.add?.color)
+  ok('项目 ＋ 用陶土浅底', sb.add?.bg === ACCENT_TINT, sb.add?.bg)
+  ok('新建会话不是实心主按钮', sb.newSession?.bg === 'rgba(0, 0, 0, 0)', sb.newSession?.bg)
+  ok('侧栏品牌位不带呼吸点', !sb.hasBrandDot)
+
   console.log('\n三档宽度 · §09')
   for (const w of [940, 1200, 1600]) {
     await page.setViewportSize({ width: w, height: 800 })
