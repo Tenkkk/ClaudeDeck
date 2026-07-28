@@ -284,6 +284,12 @@ export class ChatSession {
     await this.q?.setPermissionMode(mode)
   }
 
+  async listCommands(): Promise<
+    { name: string; description: string; argumentHint: string; aliases?: string[] }[]
+  > {
+    return (await this.q?.supportedCommands()) ?? []
+  }
+
   async listModels(): Promise<{ value: string; displayName: string }[]> {
     const models = await this.q?.supportedModels()
     return (models ?? []).map((m) => ({ value: m.value, displayName: m.displayName }))

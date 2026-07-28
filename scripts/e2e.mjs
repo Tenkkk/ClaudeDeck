@@ -75,7 +75,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/5] 进程桥接')
+  console.log('[0/6] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -91,7 +91,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/5] 聊天')
+  console.log('\n[1/6] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -108,7 +108,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/5] 切换模型')
+  console.log('\n[2/6] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -147,7 +147,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/5] 会话列表与切换')
+  console.log('\n[3/6] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -187,7 +187,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/5] 工具行')
+  console.log('\n[4/6] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -222,8 +222,51 @@ try {
   const copyBtns = await page.$$eval('.msg-action', (n) => n.map((e) => e.textContent))
   check('每条消息都带复制动作', copyBtns.length > 0 && copyBtns.every((t) => t === '复制'), `${copyBtns.length} 个`)
 
+  // ---- 斜杠命令面板 · §15 -------------------------------------------------
+  console.log('\n[5/6] 斜杠命令面板')
+  await settle(page)
+  await page.fill('.composer textarea', '/')
+  const opened = await page
+    .waitForSelector('.palette .palette-row', { timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false)
+  check('输入 / 弹出命令面板', opened)
+
+  if (opened) {
+    const groups = await page.$$eval('.palette .pop-group', (n) =>
+      n.map((e) => e.textContent?.trim() ?? ''),
+    )
+    const rows = await page.$$eval('.palette .palette-row .palette-name', (n) => n.length)
+    check('面板按来源分组', groups.length > 0, groups.join(' / '))
+    check('命令由 SDK 运行时提供', rows > 0, `${rows} 条`)
+
+    // 键盘导航:↓ 应当移动选中项
+    const firstSel = await page.$eval('.palette-row[aria-selected="true"]', (e) => e.textContent)
+    await page.keyboard.press('ArrowDown')
+    await page.waitForTimeout(150)
+    const secondSel = await page.$eval('.palette-row[aria-selected="true"]', (e) => e.textContent)
+    check('↑↓ 能移动选中项', firstSel !== secondSel)
+
+    // 回车应当把命令填进输入框,而不是把「/」当消息发出去
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(300)
+    const draft = await page.$eval('.composer textarea', (e) => e.value)
+    check('回车填入命令而非发送', draft.startsWith('/') && draft.length > 1, JSON.stringify(draft))
+
+    // 过滤:输入内容后条目应当变少
+    const before = await page.$$eval('.palette .palette-row', (n) => n.length).catch(() => 0)
+    await page.fill('.composer textarea', '/re')
+    await page.waitForTimeout(300)
+    const after = await page.$$eval('.palette .palette-row', (n) => n.length).catch(() => 0)
+    check('输入内容后过滤生效', after > 0 && after <= rows, `${rows} → ${after}`)
+    void before
+
+    await page.fill('.composer textarea', '')
+    await page.waitForTimeout(200)
+  }
+
   // ---- 会话右键菜单 · §08 ------------------------------------------------
-  console.log('\n[5/5] 会话右键菜单')
+  console.log('\n[6/6] 会话右键菜单')
   await page.click('.sidebar-scroll .session-row', { button: 'right' })
   await page.waitForSelector('.ctx', { timeout: 10_000 })
   const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>

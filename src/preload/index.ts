@@ -8,6 +8,7 @@ import type {
   ModelOption,
   PermissionMode,
   SessionListItem,
+  SlashCommandItem,
   TranscriptItem,
   UsageInfo,
   Versions,
@@ -57,6 +58,7 @@ const api = {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),
     send: (text: string): Promise<boolean> => ipcRenderer.invoke('chat:send', text),
     models: (): Promise<ModelOption[]> => ipcRenderer.invoke('chat:models'),
+    commands: (): Promise<SlashCommandItem[]> => ipcRenderer.invoke('chat:commands'),
     respondElicitation: (
       id: string,
       values: Record<string, string | boolean> | null,

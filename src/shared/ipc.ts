@@ -129,6 +129,18 @@ export interface UnknownDialogNotice {
   dialogKind: string
 }
 
+/**
+ * 斜杠命令。source 不是 SDK 给的 —— SlashCommand 没有来源字段,
+ * 是主进程查项目的 .claude/commands 与 .claude/skills 标出来的(§15)。
+ */
+export interface SlashCommandItem {
+  name: string
+  description: string
+  argumentHint: string
+  aliases?: string[]
+  source: 'builtin' | 'project' | 'skill'
+}
+
 export interface ModelOption {
   value: string
   displayName: string

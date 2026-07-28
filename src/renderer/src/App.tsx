@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import CommandPalette, { flatten } from './components/CommandPalette.js'
 import ControlBar from './components/ControlBar.js'
 import ElicitationCard from './components/ElicitationCard.js'
 import { FolderIcon } from './components/Icons.js'
@@ -19,6 +20,7 @@ import {
   type ModelOption,
   type PermissionMode,
   type SessionListItem,
+  type SlashCommandItem,
   type ToolRow as ToolRowData,
   type TranscriptItem,
   type UsageInfo,
@@ -78,6 +80,8 @@ export default function App(): React.JSX.Element {
   const [draft, setDraft] = useState('')
   /** 切 Effort 要关掉旧 query 再 resume,中间几百毫秒没有活着的 query · §08 */
   const [effortSwitching, setEffortSwitching] = useState(false)
+  const [commands, setCommands] = useState<SlashCommandItem[]>([])
+  const [paletteIndex, setPaletteIndex] = useState(0)
   const transcriptRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -159,6 +163,7 @@ export default function App(): React.JSX.Element {
     void refreshSessions()
     void window.api.chat.open().then(async () => {
       setModels(await window.api.chat.models())
+      setCommands(await window.api.chat.commands())
       await refreshMeters()
     })
   }, [phase, refreshSessions, refreshMeters])
@@ -202,6 +207,17 @@ export default function App(): React.JSX.Element {
     setBusy(true)
     setError(null)
     await window.api.chat.send(text)
+  }
+
+  // §15:只在行首第一个字符是 / 时才弹
+  const paletteOpen = draft.startsWith('/') && !draft.includes(' ') && commands.length > 0
+  const paletteFilter = paletteOpen ? draft.slice(1) : ''
+  const paletteRows = paletteOpen ? flatten(commands, paletteFilter) : []
+
+  function pickCommand(c: SlashCommandItem): void {
+    setDraft(`/${c.name}${c.argumentHint ? ' ' : ''}`)
+    setPaletteIndex(0)
+    composerRef.current?.focus()
   }
 
   if (phase === 'loading') return <Loading />
@@ -385,6 +401,15 @@ export default function App(): React.JSX.Element {
 
         {/* §05:输入框与控件条是同一张卡,控件在卡内底部 */}
         <div className="composer-wrap">
+          {paletteOpen && (
+            <CommandPalette
+              commands={commands}
+              filter={paletteFilter}
+              index={paletteIndex}
+              onIndex={setPaletteIndex}
+              onPick={pickCommand}
+            />
+          )}
           <div className="composer">
             <textarea
               ref={composerRef}
@@ -392,6 +417,30 @@ export default function App(): React.JSX.Element {
               placeholder="给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
+                // 面板开着时,上下与回车归面板 —— 否则回车会把「/rev」当消息发出去
+                if (paletteOpen && paletteRows.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setPaletteIndex((i) => (i + 1) % paletteRows.length)
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setPaletteIndex((i) => (i - 1 + paletteRows.length) % paletteRows.length)
+                    return
+                  }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    const picked = paletteRows[paletteIndex]
+                    if (picked) pickCommand(picked)
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setDraft('')
+                    return
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   void send()

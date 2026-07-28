@@ -20,12 +20,14 @@ import {
   updateConfig,
 } from './config.js'
 import { installCli, runDoctor } from './doctor.js'
+import { annotateSources } from './commands.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   ChatEvent,
   EffortLevel,
   PermissionMode,
   SessionListItem,
+  SlashCommandItem,
   ToolRow,
   TranscriptItem,
   Versions,
@@ -248,6 +250,12 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('chat:models', () => active?.listModels() ?? [])
+
+  /** 命令列表由 SDK 运行时给,界面不写死任何一条;来源在主进程标注(§15)。 */
+  ipcMain.handle('chat:commands', async (): Promise<SlashCommandItem[]> => {
+    const raw = (await active?.listCommands()) ?? []
+    return annotateSources(raw, getConfig().activeWorkspace)
+  })
   ipcMain.handle(
     'chat:elicitation',
     (_e, id: string, values: Record<string, string | boolean> | null) => {

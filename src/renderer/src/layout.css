@@ -1202,6 +1202,86 @@ button.todo-box {
   color: var(--muted-2);
 }
 
+/* ---- 斜杠命令面板 · §15 ---- */
+
+.composer-wrap {
+  position: relative;
+}
+
+.palette {
+  position: absolute;
+  left: var(--s20);
+  right: var(--s20);
+  bottom: calc(100% - var(--s12));
+  z-index: 30;
+  max-height: 320px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  padding: var(--s6) var(--s6) 0;
+}
+
+.palette-list {
+  overflow-y: auto;
+  display: grid;
+  gap: 1px;
+  align-content: start;
+}
+
+.palette-note {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted-2);
+}
+
+.palette-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-inline);
+  padding: 8px var(--s12);
+}
+
+.palette-row:hover,
+.palette-row[aria-selected='true'] {
+  background: var(--accent-tint);
+}
+
+.palette-name {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-l);
+  color: var(--ink);
+}
+
+.palette-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.palette-hint,
+.palette-alias {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+}
+
+.palette-keys {
+  padding: var(--s6) var(--s12);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+}
+
 /* ---- 侧栏会话右键菜单 · §08 ---- */
 
 .ctx {
