@@ -5,7 +5,7 @@ const INSTALL_COMMAND = 'npm install -g @anthropic-ai/claude-code'
 
 /**
  * 屏幕 B · 首次配置 —— 设计终稿 §03。
- * 评委看到的第一屏。只在缺 CLI 或想改凭据时出现,装好之后不再拦人。
+ * 新用户看到的第一屏。只在缺 CLI 或想改凭据时出现,装好之后不再拦人。
  */
 export default function Onboarding({
   doctor,

@@ -15,8 +15,9 @@
 | **切换模型** | 模型列表在运行时向 SDK 查询,会话进行中可随时切换,历史不中断 |
 | **会话列表** | 左侧按「项目 → 会话」两层列出多个工作目录下的历史会话,点击即可回到任意一次对话(跨项目会隐式切换工作目录) |
 
-附带(超出题目要求):Effort 五档调节、四档权限模式、工具调用的逐次批准、
-额度与上下文占用、以及一份可复现的版式验收(`npm run measure`)。
+此外还有:Effort 五档调节、四档权限模式、工具调用的逐次批准、斜杠命令面板、
+会话重命名 / 打标签 / 分支 / 删除、额度与上下文占用,
+以及一份可复现的版式验收(`npm run measure`)。
 
 ---
 
@@ -160,11 +161,41 @@ docs/
   IMPLEMENTATION-BRIEF.md 实施说明(设计终稿的工程对照)
 ```
 
+## 现状与路线图
+
+项目仍在持续迭代,当前可用的能力见 [CHANGELOG](CHANGELOG.md)。
+
+**接下来打算做的:**
+
+- `.claude` 配置读写中栏 —— 在侧栏与对话区之间开一栏,范围只到 `.claude/`
+  和项目根的 `CLAUDE.md`,不做通用文件树
+- 子进程面板 —— 后台 Shell / subagent 的查看与停止
+- 分支与文件回退 —— 只 fork 对话不回退磁盘会让上下文和硬盘不一致
+- 深色主题 —— 换一组 token,布局不动
+- 跨会话搜索
+
+**已知做不到的:** `AskUserQuestion` 与 `ExitPlanMode` 不对 Agent SDK 会话开放,
+所以对应的界面暂时无法实现。收到无法渲染的对话框时一律安全取消并在界面上说明,
+不会猜测参数硬画一个选择框。原因与证据记在 [CLAUDE.md](CLAUDE.md)。
+
 ## 文档
 
-- [界面规格](docs/DESIGN-SPEC.md) —— 给设计的输入
-- [实施说明](docs/IMPLEMENTATION-BRIEF.md) —— 设计终稿的工程对照、接口清单与五个坑
+- [界面规格](docs/DESIGN-SPEC.md) —— 界面的结构、状态与文案
+- [实施说明](docs/IMPLEMENTATION-BRIEF.md) —— 设计与工程的对照、接口清单与五个坑
+- [CLAUDE.md](CLAUDE.md) —— 给 AI 协作者的约束与已知边界
+- [更新日志](CHANGELOG.md)
+
+## 参与
+
+欢迎提 issue 反馈问题。提 PR 前请确保:
+
+```bash
+npm run typecheck && npm run unit && npm run build
+```
+
+`smoke` 与 `e2e` 会产生真实 API 调用,不进 CI,按需本地跑。
 
 ## License
 
-MIT
+[MIT](LICENSE)。随包分发的字体为 SIL Open Font License 1.1,
+版权与许可证原文见 [src/renderer/src/fonts/LICENSES.md](src/renderer/src/fonts/LICENSES.md)。

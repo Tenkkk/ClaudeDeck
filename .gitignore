@@ -10,3 +10,7 @@ Thumbs.db
 .env.local
 
 .screenshots/
+
+# 个人笔记,不进仓库
+docs/DESIGN-NOTES.md
+docs/AI-NOTES.md
