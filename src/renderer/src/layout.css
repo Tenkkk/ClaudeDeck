@@ -370,10 +370,88 @@ kbd,
  * 屏幕 D · 主界面 · §05
  * ========================================================== */
 
+/* ---- 无边框窗口:标题栏 + 下面的三栏 ---- */
+
+.app {
+  display: grid;
+  grid-template-rows: var(--h-titlebar) 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  padding-left: var(--s8);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  /* 整条可拖,按钮各自 no-drag —— 不标的话按钮会被拖拽区吃掉点击 */
+  -webkit-app-region: drag;
+}
+
+.titlebar-left,
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  flex: none;
+  -webkit-app-region: no-drag;
+}
+
+/* 中间整块留给拖拽,不放任何内容 */
+.titlebar-drag {
+  flex: 1;
+  align-self: stretch;
+}
+
+.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-control);
+  color: var(--muted);
+}
+
+.win-btn:hover {
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.win-btn[aria-pressed='true'] {
+  color: var(--ink-2);
+}
+
+/* 窗口按钮按系统的尺寸来 —— 手会照着系统的肌肉记忆往那儿去 */
+.win-ctl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: var(--h-titlebar);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.win-ctl:hover {
+  background: var(--surface);
+}
+
+/* 只有关闭这一颗变红:它和另外两颗的后果不是一个量级 */
+.win-ctl.close:hover {
+  background: var(--warn);
+  color: #fff;
+}
+
 .shell {
   display: grid;
   grid-template-columns: var(--w-sidebar) 1fr;
-  height: 100vh;
+  min-height: 0;
   overflow: hidden;
   /* 拖拽手柄绝对定位在两栏交界处,靠这个定位上下文 */
   position: relative;
@@ -422,6 +500,16 @@ kbd,
 /* §10:中栏打开时 264 + 320 + 剩下的 */
 .shell.with-mid {
   grid-template-columns: var(--w-sidebar) var(--w-midcol) 1fr;
+}
+
+/* 侧栏收起:那一列整个去掉,不是宽度归零 —— 归零的话里面的内容还在,
+   照样参与布局计算 */
+.shell.no-sidebar {
+  grid-template-columns: 1fr;
+}
+
+.shell.no-sidebar.with-mid {
+  grid-template-columns: var(--w-midcol) 1fr;
 }
 
 /* ---- .claude 配置栏 · §10 ---- */
@@ -982,6 +1070,187 @@ kbd,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---- 搜索面板与设置对话框:同一套遮罩 ---- */
+
+.search-veil,
+.dialog-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  background: rgba(35, 32, 25, 0.28);
+}
+
+.search-veil {
+  /* 搜索从上方三分之一处落下,不居中 —— 眼睛本来就在上半屏 */
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.dialog-veil {
+  align-items: center;
+}
+
+.search-panel,
+.dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-popover);
+  box-shadow: var(--shadow-popover);
+}
+
+.search-panel {
+  width: min(560px, 92vw);
+  max-height: 60vh;
+}
+
+.search-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: var(--s12) var(--s16);
+  font-size: var(--text-ui-l);
+  color: var(--ink);
+}
+
+.search-input:focus {
+  outline: none;
+}
+
+.search-list {
+  overflow: auto;
+  padding: var(--s4) 0;
+  min-height: 0;
+}
+
+.search-empty {
+  padding: var(--s12) var(--s16);
+}
+
+.search-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s12);
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--s6) var(--s16);
+  text-align: left;
+}
+
+.search-row[aria-selected='true'] {
+  background: var(--accent-tint);
+}
+
+.search-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--text-ui-m);
+}
+
+.search-meta {
+  flex: none;
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+}
+
+.search-keys {
+  border-top: 1px solid var(--border);
+  padding: var(--s6) var(--s16);
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+}
+
+/* ---- 设置 ---- */
+
+.dialog {
+  width: min(520px, 92vw);
+  max-height: 82vh;
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s12) var(--s12) var(--s12) var(--s16);
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-body {
+  overflow: auto;
+  padding: var(--s8) 0 var(--s16);
+  min-height: 0;
+}
+
+.set-row {
+  display: flex;
+  gap: var(--s12);
+  padding: var(--s4) var(--s16);
+  font-size: var(--fs-sm);
+}
+
+.set-label {
+  flex: none;
+  width: 88px;
+  color: var(--muted);
+}
+
+.set-value {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-2);
+}
+
+/* 路径可能很长,让它换行而不是把对话框撑宽 */
+.set-path {
+  word-break: break-all;
+}
+
+.set-ok {
+  color: var(--live);
+}
+
+.set-bad {
+  color: var(--warn);
+}
+
+.set-note {
+  padding: var(--s4) var(--s16) var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--muted-2);
+  line-height: 1.6;
+}
+
+.set-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s12);
+  padding: var(--s4) var(--s16);
+}
+
+.set-field input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  padding: var(--s6) var(--s8);
+  font-size: var(--text-ui-m);
+  color: var(--ink);
+}
+
+.set-actions {
+  padding: var(--s8) var(--s16) 0;
+  align-items: center;
 }
 
 /* 归属行右端的文件入口 */

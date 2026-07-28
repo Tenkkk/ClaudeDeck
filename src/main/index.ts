@@ -63,8 +63,13 @@ function createWindow(): void {
     minWidth: 940,
     minHeight: 600,
     show: false,
-    autoHideMenuBar: true,
-    backgroundColor: '#ffffff',
+    /*
+     * 无边框:系统标题栏和界面是两张皮 —— 它有自己的底色、自己的字体、
+     * 自己的高度,和下面这套设计对不上。改成自己画一条,和侧栏同底,
+     * 视觉上是一整块。窗口按钮由渲染层出,拖拽靠 -webkit-app-region。
+     */
+    frame: false,
+    backgroundColor: '#faf7f2',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -74,6 +79,12 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  // 最大化状态要回传:自绘的那颗按钮得知道画「最大化」还是「还原」
+  const sendMax = (): void =>
+    mainWindow?.webContents.send('window:maximized', mainWindow.isMaximized() === true)
+  mainWindow.on('maximize', sendMax)
+  mainWindow.on('unmaximize', sendMax)
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url)
@@ -287,6 +298,17 @@ function registerIpc(): void {
     const config = getConfig()
     return deleteSession(sessionId, { dir: config.activeWorkspace ?? undefined })
   })
+
+  // 自绘标题栏的三颗按钮。窗口没了就什么都不做,不抛。
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize())
+  ipcMain.handle('window:toggleMaximize', () => {
+    if (!mainWindow) return false
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+    return mainWindow.isMaximized()
+  })
+  ipcMain.handle('window:close', () => mainWindow?.close())
+  ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() === true)
 
   /** 在资源管理器里打开项目目录(§08 右键菜单)。 */
   ipcMain.handle('shell:openProject', (_e, path: string) => shell.openPath(path))

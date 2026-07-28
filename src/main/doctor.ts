@@ -41,12 +41,16 @@ export async function runDoctor(): Promise<DoctorReport> {
       cliFound: true,
       cliVersion: /^\d+\.\d+\.\d+\S*/.exec(raw)?.[0] ?? raw,
       credentialsConfigured,
+      cliSource: bundled ? 'bundled' : 'path',
+      cliPath: bundled,
     }
   } catch (err) {
     return {
       cliFound: false,
       cliError: err instanceof Error ? err.message : String(err),
       credentialsConfigured,
+      cliSource: bundled ? 'bundled' : 'path',
+      cliPath: bundled,
     }
   }
 }

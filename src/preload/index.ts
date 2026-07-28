@@ -82,6 +82,18 @@ const api = {
     write: (projectPath: string, relPath: string, content: string): Promise<SaveResult> =>
       ipcRenderer.invoke('claude:write', projectPath, relPath, content),
   },
+  /** 自绘标题栏要的那几件事 */
+  window: {
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggleMaximize'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+    onMaximizedChange: (handler: (max: boolean) => void): (() => void) => {
+      const listener = (_e: unknown, max: boolean): void => handler(max)
+      ipcRenderer.on('window:maximized', listener)
+      return () => ipcRenderer.removeListener('window:maximized', listener)
+    },
+  },
   app: {
     versions: (): Promise<Versions> => ipcRenderer.invoke('app:versions'),
     openProject: (path: string): Promise<string> => ipcRenderer.invoke('shell:openProject', path),

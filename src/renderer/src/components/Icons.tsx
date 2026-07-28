@@ -55,6 +55,25 @@ export function GearIcon({ size = 14, className }: Props): React.JSX.Element {
   )
 }
 
+/** 侧栏开关:一个方框加一条竖线,左边那格就是侧栏 */
+export function PanelIcon({ size = 14, className }: Props): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      aria-hidden="true"
+    >
+      <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" />
+      <line x1="6.4" y1="2.8" x2="6.4" y2="13.2" />
+    </svg>
+  )
+}
+
 export function SearchIcon({ size = 14, className }: Props): React.JSX.Element {
   return (
     <svg

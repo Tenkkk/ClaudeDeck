@@ -51,6 +51,14 @@ export interface DoctorReport {
   cliVersion?: string
   cliError?: string
   credentialsConfigured: boolean
+  /**
+   * 用的是随包分发的那份,还是 PATH 上全局装的那份。
+   * 设置页要把这件事说清楚 —— 「装了 Claude Code」和「这个应用在用哪一个」
+   * 是两回事,版本对不上时排查全靠它。
+   */
+  cliSource?: 'bundled' | 'path'
+  /** 随包那份才有绝对路径;走 PATH 时由系统解析,这里不猜 */
+  cliPath?: string
 }
 
 /**

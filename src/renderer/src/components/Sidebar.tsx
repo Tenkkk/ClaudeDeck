@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CaretIcon, CheckIcon, FolderIcon, GearIcon, PlusIcon, SearchIcon } from './Icons.js'
+import { CaretIcon, CheckIcon, FolderIcon, GearIcon, PlusIcon } from './Icons.js'
 import Popover from './Popover.js'
 import { relativeTime } from '../lib/path.js'
 import {
@@ -37,8 +37,7 @@ export default function Sidebar({
   onExpandAll,
   onAddProject,
   onManageProjects,
-  theme,
-  onTheme,
+  onOpenSettings,
   filesProject,
   onOpenFiles,
 }: {
@@ -58,8 +57,8 @@ export default function Sidebar({
   onExpandAll: (path: string) => void
   onAddProject: () => void
   onManageProjects: () => void
-  theme: ThemePref
-  onTheme: (t: ThemePref) => void
+  /** 主题、凭据、接管情况都进了设置对话框,这里只留一个入口 */
+  onOpenSettings: () => void
   /** 中栏正在浏览哪个项目的文件,没有就是 null */
   filesProject: string | null
   onOpenFiles: (projectPath: string) => void
@@ -69,20 +68,15 @@ export default function Sidebar({
     <aside className="sidebar">
       {/* 侧栏的品牌位不带圆点 —— 那颗呼吸点是加载态与空态的元件(§02),
           不是常驻装饰。陶土只出现在三处:当前项、主按钮、等你决定的卡片。 */}
+      {/*
+        新建会话移到品牌行右端 —— 搜索挪去了标题栏,这个位置正好留给
+        侧栏里最常用的动作。原先那一整行连同 Ctrl N 标注一并去掉:
+        快捷键提示是给键盘用户的,而这里的形态是给鼠标看的。
+      */}
       <div className="sidebar-brand">
         <span className="brand">ClaudeDeck</span>
-        {/* 跨会话搜索是终稿明确「没画」的一项(§09),这里先占位并说明 */}
-        <button className="ghost icon-btn" title="搜索(尚未实现)" disabled>
-          <SearchIcon />
-        </button>
-      </div>
-
-      {/* 新建会话是一行安静的入口,不是主按钮 —— 它不属于陶土的那三处 */}
-      <div className="sidebar-new">
-        <button className="new-session" onClick={onNewSession}>
-          <PlusIcon size={13} />
-          <span className="label">新建会话</span>
-          <kbd>Ctrl N</kbd>
+        <button className="ghost icon-btn" title="新建会话" onClick={onNewSession}>
+          <PlusIcon size={14} />
         </button>
       </div>
 
@@ -239,58 +233,17 @@ export default function Sidebar({
             <span>
               {versions?.app ?? '—'}
               {versions?.cli ? ` · CLI ${versions.cli}` : ''}
+              {usage && ` · $${usage.sessionCostUsd.toFixed(2)}`}
             </span>
             <button
               className="icon-btn settings-btn"
-              aria-expanded={themeOpen}
               aria-label="设置"
               title="设置"
-              onClick={() => setThemeOpen((v) => !v)}
+              onClick={onOpenSettings}
             >
               <GearIcon size={14} />
             </button>
           </div>
-
-          <Popover open={themeOpen} onClose={() => setThemeOpen(false)} align="right" width={200}>
-            <div className="pop-group">主题</div>
-            {THEME_OPTIONS.map((t) => (
-              <button
-                key={t.value}
-                className={`pop-row${t.value === theme ? ' current' : ''}`}
-                onClick={() => {
-                  onTheme(t.value)
-                  setThemeOpen(false)
-                }}
-              >
-                <span className="pop-check">{t.value === theme ? <CheckIcon size={9} /> : ''}</span>
-                <span className="pop-body">
-                  <span className="pop-title">{t.label}</span>
-                </span>
-              </button>
-            ))}
-            {/* 账号:原生 /status 里就有这几行。三方 provider 下多数字段是空的,
-                那就少画几行,不写「未知」 */}
-            {account && (account.email || account.subscriptionType || account.organization) && (
-              <>
-                <div className="ctx-sep" />
-                <div className="pop-group">账号</div>
-                {account.email && <div className="about-row">{account.email}</div>}
-                {account.organization && <div className="about-row">{account.organization}</div>}
-                {account.subscriptionType && (
-                  <div className="about-row">{account.subscriptionType}</div>
-                )}
-                {account.apiProvider && account.apiProvider !== 'firstParty' && (
-                  <div className="about-row">{account.apiProvider}</div>
-                )}
-              </>
-            )}
-            <div className="ctx-sep" />
-            <div className="about-row">
-              ClaudeDeck {versions?.app ?? '—'}
-              {versions?.cli ? ` · Claude Code ${versions.cli}` : ''}
-            </div>
-            {usage && <div className="about-row">本会话 ${usage.sessionCostUsd.toFixed(2)}</div>}
-          </Popover>
         </div>
       </div>
     </aside>

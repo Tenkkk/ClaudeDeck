@@ -9,8 +9,11 @@ import Message from './components/Message.js'
 import FileTree from './components/FileTree.js'
 import MidColumn from './components/MidColumn.js'
 import PlanCard from './components/PlanCard.js'
+import SearchPalette from './components/SearchPalette.js'
 import SessionMenu from './components/SessionMenu.js'
+import SettingsDialog from './components/SettingsDialog.js'
 import Sidebar from './components/Sidebar.js'
+import TitleBar from './components/TitleBar.js'
 import Markdown from './components/Markdown.js'
 import AgentsPanel from './components/AgentsPanel.js'
 import McpPanel from './components/McpPanel.js'
@@ -135,6 +138,10 @@ export default function App(): React.JSX.Element {
   /** .claude 配置栏 · §10 */
   /** 中栏在浏览哪个项目的文件树 */
   const [filesProject, setFilesProject] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  /** 侧栏收起时,shell 的栅格去掉那一列 */
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [openFile, setOpenFile] = useState<{ project: string; path: string } | null>(null)
   const [fileDirty, setFileDirty] = useState(false)
   const [tasks, setTasks] = useState<BackgroundTask[]>([])
@@ -444,14 +451,26 @@ export default function App(): React.JSX.Element {
     composerRef.current?.focus()
   }
 
-  if (phase === 'loading') return <Loading />
+  /*
+   * 窗口是无边框的,所以标题栏必须比这几屏更外层 —— 否则加载页、引导页、
+   * 选项目页上连关闭按钮都没有,只能去任务管理器结束进程。
+   * 这几屏还没有侧栏和搜索,那两个入口就不给。
+   */
+  const bare = (body: React.JSX.Element): React.JSX.Element => (
+    <div className="app">
+      <TitleBar sidebarOpen={false} onToggleSidebar={() => {}} onSearch={() => {}} bare />
+      {body}
+    </div>
+  )
+
+  if (phase === 'loading') return bare(<Loading />)
 
   if (phase === 'onboarding') {
-    return <Onboarding doctor={doctor} config={config} onDone={reload} />
+    return bare(<Onboarding doctor={doctor} config={config} onDone={reload} />)
   }
 
   if (phase === 'projects') {
-    return (
+    return bare(
       <ProjectPicker
         config={config}
         onAdd={async () => {
@@ -464,7 +483,7 @@ export default function App(): React.JSX.Element {
           setPhase('workspace')
         }}
         onRemove={async (path) => setConfig(await window.api.projects.remove(path))}
-      />
+      />,
     )
   }
 
@@ -535,17 +554,54 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <div
-      className={`shell${midOpen ? ' with-mid' : ''}`}
-      // 覆盖 styles.css 里的默认值。写在这一层而不是每栏各写各的,
-      // 是因为中栏关着时布局也要跟着变,统一由 grid 的模板表达。
-      style={
-        {
-          '--w-sidebar': `${widths.sidebar}px`,
-          '--w-midcol': `${widths.midcol}px`,
-        } as React.CSSProperties
-      }
-    >
+    <div className="app">
+      <TitleBar
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        onSearch={() => setSearchOpen(true)}
+      />
+
+      {searchOpen && (
+        <SearchPalette
+          projects={config?.projects ?? []}
+          sessionsByProject={sidebarSessions}
+          onClose={() => setSearchOpen(false)}
+          onPick={(p, id) => {
+            setSearchOpen(false)
+            void openSession(p, id)
+          }}
+        />
+      )}
+
+      {settingsOpen && (
+        <SettingsDialog
+          config={config}
+          doctor={doctor}
+          versions={versions}
+          account={account}
+          onClose={() => setSettingsOpen(false)}
+          onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
+          onSaveCredentials={async (url, key) => {
+            const next = await window.api.config.update({ baseUrl: url })
+            setConfig(next)
+            // 空串表示清除,null 表示这次不动它
+            if (key !== null) setConfig(await window.api.config.setApiKey(key === '' ? null : key))
+          }}
+        />
+      )}
+
+      <div
+        className={`shell${midOpen ? ' with-mid' : ''}${sidebarOpen ? '' : ' no-sidebar'}`}
+        // 覆盖 styles.css 里的默认值。写在这一层而不是每栏各写各的,
+        // 是因为中栏关着时布局也要跟着变,统一由 grid 的模板表达。
+        style={
+          {
+            '--w-sidebar': `${widths.sidebar}px`,
+            '--w-midcol': `${widths.midcol}px`,
+          } as React.CSSProperties
+        }
+      >
+        {sidebarOpen && (
       <Sidebar
         projects={config?.projects ?? []}
         sessionsByProject={sidebarSessions}
@@ -581,17 +637,19 @@ export default function App(): React.JSX.Element {
           setOpenFile(null)
           setFilesProject((cur) => (cur === path ? null : path))
         }}
-        theme={config?.theme ?? 'system'}
-        onTheme={async (t) => setConfig(await window.api.config.update({ theme: t }))}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
+        )}
 
-      {/* 两道竖线都能拖 · 夹逼规则见 lib/columns */}
-      <Resizer
-        className="resizer-sidebar"
-        label="调整侧栏宽度"
-        onDrag={(x) => resizeSidebar(x)}
-        onNudge={(d) => resizeSidebar(widths.sidebar + d)}
-      />
+      {/* 两道竖线都能拖 · 夹逼规则见 lib/columns。侧栏收起时没有那道线 */}
+      {sidebarOpen && (
+        <Resizer
+          className="resizer-sidebar"
+          label="调整侧栏宽度"
+          onDrag={(x) => resizeSidebar(x)}
+          onNudge={(d) => resizeSidebar(widths.sidebar + d)}
+        />
+      )}
       {midOpen && (
         <Resizer
           className="resizer-midcol"
@@ -980,6 +1038,7 @@ export default function App(): React.JSX.Element {
           }}
         />
       )}
+      </div>
     </div>
   )
 }
