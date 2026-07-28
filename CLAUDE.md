@@ -24,6 +24,49 @@
 7. **API Key 只走 `safeStorage`。** 任何时候都不要把明文 key 写进文件或日志,
    也不要经 IPC 传给渲染层。
 
+## SDK 会话里拿不到的东西(实测,别再试)
+
+`AskUserQuestion` 与 `ExitPlanMode` **不对 Agent SDK 会话开放**。三条证据:
+
+1. Claude 自报可用工具列表里没有
+2. 写进 `options.tools` 也不暴露
+3. 直接调用返回 `ExitPlanMode exists but is not enabled in this context`
+
+所以设计终稿 §13(AskUserQuestion 全套)和 §06 的计划卡**做不出来**。
+类型在 `sdk-tools.d.ts` 里,但工具不开放。等 SDK 放开再说。
+
+`askUserQuestionTimeout` 属于 `Settings`(`.claude/settings.json`),
+不是 `Options` —— 写进 query options 编译不过。
+
+## 宿主回调只有三个
+
+| 回调 | 管什么 | 契约 |
+|---|---|---|
+| `canUseTool` | 工具批准 | 类型完整 |
+| `onElicitation` | MCP 服务要你填表 | `requestedSchema` 是标准 JSON Schema,**可以写通用渲染器** |
+| `onUserDialog` | 各类选择框 | `payload` 是 `Record<string, unknown>`,**按 kind 各自定义,写不出通用渲染器** |
+
+`dialogKind` 是开放字符串。从 CLI 二进制里取到的完整注册表(备查,不要据此
+硬画 payload):
+
+```
+auto_mode_flagged_allow      permission_ask_user_question
+auto_mode_setup_review       permission_bash
+chrome_install_setup         permission_browser
+chrome_install_upsell        permission_enter_plan_mode
+computer_use_approval        permission_exit_plan_mode_v2
+fable_overage_consent_prompt permission_file
+it2_setup                    permission_monitor
+mcp_url_elicitation          permission_powershell
+refusal_fallback_prompt      permission_prompt
+                             permission_skill
+                             permission_webfetch
+                             permission_workflow
+```
+
+**没有可验证契约的 kind 一律回 `{ behavior: 'cancelled' }`。**
+猜错的选择会真的落到文件上。
+
 ## 选项切换的代价不对称
 
 | 选项 | 方式 | 是否打断 |
