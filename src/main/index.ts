@@ -3,9 +3,11 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
   deleteSession,
+  forkSession,
   getSessionMessages,
   listSessions,
   renameSession,
+  tagSession,
 } from '@anthropic-ai/claude-agent-sdk'
 import { ChatSession } from './chat.js'
 import {
@@ -127,6 +129,7 @@ function registerIpc(): void {
             preview: s.firstPrompt ?? '',
             lastModified: s.lastModified,
             gitBranch: s.gitBranch,
+            tag: s.tag,
           }))
         } catch {
           // A project directory can be renamed or unplugged between launches.
@@ -206,10 +209,32 @@ function registerIpc(): void {
     return renameSession(sessionId, title, { dir: config.activeWorkspace ?? undefined })
   })
 
+  /** 一个会话一个标签,传 null 即清除(§08)。 */
+  ipcMain.handle('sessions:tag', (_e, sessionId: string, tag: string | null) => {
+    const config = getConfig()
+    return tagSession(sessionId, tag, { dir: config.activeWorkspace ?? undefined })
+  })
+
+  /**
+   * 从某条会话分支出去。SDK 没有 regenerate,也删不掉已写入的消息,
+   * 所以「重答」只能是分支 —— 必然多出一条会话,界面必须说出来(坑 4.4)。
+   */
+  ipcMain.handle('sessions:fork', async (_e, sessionId: string, title?: string) => {
+    const config = getConfig()
+    const result = await forkSession(sessionId, {
+      dir: config.activeWorkspace ?? undefined,
+      title,
+    })
+    return result.sessionId
+  })
+
   ipcMain.handle('sessions:delete', (_e, sessionId: string) => {
     const config = getConfig()
     return deleteSession(sessionId, { dir: config.activeWorkspace ?? undefined })
   })
+
+  /** 在资源管理器里打开项目目录(§08 右键菜单)。 */
+  ipcMain.handle('shell:openProject', (_e, path: string) => shell.openPath(path))
 
   ipcMain.handle('chat:open', (_e, sessionId?: string) => {
     openSession(sessionId)

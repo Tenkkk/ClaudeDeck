@@ -142,6 +142,8 @@ export interface SessionListItem {
   preview: string
   lastModified: number
   gitBranch?: string
+  /** 一个会话一个标签(tagSession 收单值,传 null 即清除)。 */
+  tag?: string
 }
 
 export interface DiffHunk {

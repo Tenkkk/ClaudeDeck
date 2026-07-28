@@ -3,6 +3,7 @@ import ControlBar from './components/ControlBar.js'
 import ElicitationCard from './components/ElicitationCard.js'
 import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
+import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
 import ToolRow from './components/ToolRow.js'
 import Loading from './screens/Loading.js'
@@ -69,6 +70,10 @@ export default function App(): React.JSX.Element {
   const [permission, setPermission] = useState<PendingPermission | null>(null)
   const [elicitation, setElicitation] = useState<ElicitationCardData | null>(null)
   const [unknownDialog, setUnknownDialog] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{
+    session: SessionListItem
+    at: { x: number; y: number }
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   /** 切 Effort 要关掉旧 query 再 resume,中间几百毫秒没有活着的 query · §08 */
@@ -248,6 +253,7 @@ export default function App(): React.JSX.Element {
           await newSession()
         }}
         onOpenSession={(p, id) => void openSession(p, id)}
+        onSessionMenu={(session, at) => setMenu({ session, at })}
         onToggleCollapse={async (path, collapsed) => {
           setConfig(await window.api.projects.collapse(path, collapsed))
         }}
@@ -426,6 +432,51 @@ export default function App(): React.JSX.Element {
         </div>
 
       </main>
+
+      {menu && (
+        <SessionMenu
+          session={menu.session}
+          knownTags={[
+            ...new Set(
+              Object.values(sessionsByProject)
+                .flat()
+                .map((s) => s.tag)
+                .filter((t): t is string => Boolean(t)),
+            ),
+          ]}
+          at={menu.at}
+          onClose={() => setMenu(null)}
+          onRename={async (title) => {
+            await window.api.sessions.rename(menu.session.sessionId, title)
+            setMenu(null)
+            await refreshSessions()
+          }}
+          onTag={async (tag) => {
+            await window.api.sessions.tag(menu.session.sessionId, tag)
+            setMenu(null)
+            await refreshSessions()
+          }}
+          onFork={async () => {
+            const id = await window.api.sessions.fork(
+              menu.session.sessionId,
+              `${menu.session.title} 分支`,
+            )
+            setMenu(null)
+            await refreshSessions()
+            if (config?.activeWorkspace) await openSession(config.activeWorkspace, id)
+          }}
+          onOpenDir={async () => {
+            if (config?.activeWorkspace) await window.api.app.openProject(config.activeWorkspace)
+            setMenu(null)
+          }}
+          onDelete={async () => {
+            await window.api.sessions.remove(menu.session.sessionId)
+            setMenu(null)
+            if (menu.session.sessionId === activeSession) await newSession()
+            await refreshSessions()
+          }}
+        />
+      )}
     </div>
   )
 }

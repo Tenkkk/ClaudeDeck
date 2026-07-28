@@ -75,7 +75,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/4] 进程桥接')
+  console.log('[0/5] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -91,7 +91,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/4] 聊天')
+  console.log('\n[1/5] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -108,7 +108,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/4] 切换模型')
+  console.log('\n[2/5] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -147,7 +147,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/4] 会话列表与切换')
+  console.log('\n[3/5] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -187,7 +187,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/4] 工具行')
+  console.log('\n[4/5] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -221,6 +221,62 @@ try {
   // 悬停动作行:复制
   const copyBtns = await page.$$eval('.msg-action', (n) => n.map((e) => e.textContent))
   check('每条消息都带复制动作', copyBtns.length > 0 && copyBtns.every((t) => t === '复制'), `${copyBtns.length} 个`)
+
+  // ---- 会话右键菜单 · §08 ------------------------------------------------
+  console.log('\n[5/5] 会话右键菜单')
+  await page.click('.sidebar-scroll .session-row', { button: 'right' })
+  await page.waitForSelector('.ctx', { timeout: 10_000 })
+  const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>
+    n.map((e) => e.textContent?.trim() ?? ''),
+  )
+  check('菜单列出五项', menuItems.length === 5, menuItems.join(' / '))
+  check('删除项走警示色', await page.$eval('.ctx .ctx-row.warn', (e) => e.textContent?.trim()) === '删除会话')
+
+  // 重命名:改完侧栏标题要跟着变
+  await page.click('.ctx .ctx-row')
+  await page.fill('.ctx-rename input', 'e2e 改过的标题')
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('.session-row .title')].some((e) =>
+        e.textContent?.includes('e2e 改过的标题'),
+      ),
+    { timeout: 20_000 },
+  )
+  check('重命名后侧栏跟着变', true)
+
+  // 打标签:标签要出现在标题旁边
+  await page.click('.sidebar-scroll .session-row', { button: 'right' })
+  await page.waitForSelector('.ctx', { timeout: 10_000 })
+  await page.click('.ctx .ctx-row:nth-child(2)')
+  await page.fill('.ctx-tag input', '待验证')
+  await page.keyboard.press('Enter')
+  await page.waitForSelector('.session-tag', { timeout: 20_000 })
+  const tagText = await page.textContent('.session-tag')
+  check('打标签后标签出现在列表里', tagText?.trim() === '待验证', tagText?.trim())
+
+  // 删除:真删 SDK 的 store,要二次确认。
+  // 不用行数判断 —— 删的是当前会话,newSession() 会立刻建一条顶上,行数可能不变。
+  // 盯那条被删会话的标题才准。
+  const doomed = 'e2e 改过的标题'
+  await page.click('.sidebar-scroll .session-row', { button: 'right' })
+  await page.waitForSelector('.ctx', { timeout: 10_000 })
+  await page.click('.ctx .ctx-row.warn')
+  await page.waitForSelector('.ctx-confirm', { timeout: 10_000 })
+  check('删除有二次确认', true)
+  await page.click('.ctx-confirm .danger')
+  const gone = await page
+    .waitForFunction(
+      (t) =>
+        ![...document.querySelectorAll('.session-row .title')].some((e) =>
+          e.textContent?.includes(t),
+        ),
+      doomed,
+      { timeout: 30_000 },
+    )
+    .then(() => true)
+    .catch(() => false)
+  check('确认后那条会话真的从列表消失', gone, doomed)
 } catch (err) {
   failed++
   console.error('\n异常:', err?.message ?? err)

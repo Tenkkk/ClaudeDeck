@@ -1202,6 +1202,119 @@ button.todo-box {
   color: var(--muted-2);
 }
 
+/* ---- 侧栏会话右键菜单 · §08 ---- */
+
+.ctx {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  gap: 1px;
+}
+
+.ctx-row {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-inline);
+  padding: 8px var(--s12);
+  color: var(--ink);
+}
+
+.ctx-row:hover {
+  background: var(--bg);
+}
+
+/* 删除是唯一用警示色做主按钮的地方 —— deleteSession 动的是 SDK 的 store,
+   本地没有副本可以回滚 */
+.ctx-row.warn {
+  color: var(--warn);
+}
+
+.ctx-row.warn:hover {
+  background: var(--warn-tint);
+}
+
+.ctx-sep {
+  height: 1px;
+  background: var(--border);
+  margin: var(--s4) var(--s8);
+}
+
+.ctx-rename,
+.ctx-tag {
+  display: grid;
+  gap: var(--s8);
+  padding: var(--s8);
+}
+
+.ctx-rename input,
+.ctx-tag input {
+  width: 100%;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s6);
+}
+
+.tag-chip {
+  border-radius: var(--r-pill);
+  padding: 2px var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+}
+
+.ctx-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.ctx-clear {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.ctx-clear:hover {
+  background: transparent;
+  color: var(--warn);
+}
+
+.ctx-confirm {
+  display: grid;
+  gap: var(--s8);
+  padding: var(--s12);
+}
+
+.ctx-confirm p {
+  margin: 0;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ctx-confirm .row {
+  justify-content: flex-end;
+  margin-top: var(--s4);
+}
+
+/* 会话标签,跟在标题后面 */
+.session-tag {
+  margin-left: var(--s6);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 0 var(--s6);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 /* §06 兜底提示:低调一行,不做成错误 */
 .notice {
   width: 100%;

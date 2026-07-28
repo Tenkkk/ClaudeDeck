@@ -44,9 +44,14 @@ const api = {
     rename: (sessionId: string, title: string): Promise<void> =>
       ipcRenderer.invoke('sessions:rename', sessionId, title),
     remove: (sessionId: string): Promise<void> => ipcRenderer.invoke('sessions:delete', sessionId),
+    tag: (sessionId: string, tag: string | null): Promise<void> =>
+      ipcRenderer.invoke('sessions:tag', sessionId, tag),
+    fork: (sessionId: string, title?: string): Promise<string> =>
+      ipcRenderer.invoke('sessions:fork', sessionId, title),
   },
   app: {
     versions: (): Promise<Versions> => ipcRenderer.invoke('app:versions'),
+    openProject: (path: string): Promise<string> => ipcRenderer.invoke('shell:openProject', path),
   },
   chat: {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),

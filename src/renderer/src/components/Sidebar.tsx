@@ -21,6 +21,7 @@ export default function Sidebar({
   onNewSession,
   onNewSessionIn,
   onOpenSession,
+  onSessionMenu,
   onToggleCollapse,
   onExpandAll,
   onAddProject,
@@ -36,6 +37,7 @@ export default function Sidebar({
   onNewSession: () => void
   onNewSessionIn: (projectPath: string) => void
   onOpenSession: (projectPath: string, sessionId: string) => void
+  onSessionMenu: (session: SessionListItem, at: { x: number; y: number }) => void
   onToggleCollapse: (path: string, collapsed: boolean) => void
   onExpandAll: (path: string) => void
   onAddProject: () => void
@@ -133,9 +135,16 @@ export default function Sidebar({
                       className="session-row"
                       aria-current={s.sessionId === activeSession}
                       onClick={() => onOpenSession(project.path, s.sessionId)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        onSessionMenu(s, { x: e.clientX, y: e.clientY })
+                      }}
                       title={s.title}
                     >
-                      <span className="title">{s.title}</span>
+                      <span className="title">
+                        {s.title}
+                        {s.tag && <span className="session-tag">{s.tag}</span>}
+                      </span>
                       <span className="meta">
                         {relativeTime(s.lastModified)}
                         {/* 当前会话的分支名走陶土色,其他会话保持中性 */}
