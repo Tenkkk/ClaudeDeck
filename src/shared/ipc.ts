@@ -115,6 +115,23 @@ export interface ContextCategory {
   deferred: boolean
 }
 
+/**
+ * 一个 MCP 服务的状态。字段直接来自 SDK 的 `mcpServerStatus()` ——
+ * 名字、连接状态、失败原因、来源、工具清单,它全都给了。
+ *
+ * 此前 `/mcp` 是把命令当消息发出去、拿回一段纯文本 —— 那是 CLI 给 SDK 宿主的
+ * **降级回复**,它自己在末尾就写着「详情请去终端看」。把降级回复当功能用,
+ * 等于把「我没做」包装成「做了」。
+ */
+export interface McpServer {
+  name: string
+  status: 'connected' | 'failed' | 'needs-auth' | 'pending' | 'disabled'
+  /** 配置来源:project / user / local / claudeai / managed */
+  scope?: string
+  error?: string
+  toolCount: number
+}
+
 export interface Versions {
   app: string
   cli: string | null
@@ -337,6 +354,8 @@ export type TranscriptItem =
   | { kind: 'tool'; row: ToolRow }
   /** Claude 回答之前的思考。默认折叠 —— 想看的时候才看 */
   | { kind: 'thinking'; text: string }
+  /** `/mcp` 的结果。留在对话流里 —— 你跑了一条命令,就该看见它的回执 */
+  | { kind: 'mcp'; servers: McpServer[] }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
 /** 与 SDK 的 SDKStatus 一致 —— 不自己另立一套状态机 */

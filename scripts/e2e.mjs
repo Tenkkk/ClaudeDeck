@@ -547,13 +547,18 @@ try {
   await page.fill('.composer textarea', '只回复两个字:好的')
   await page.click('.composer [data-state="send"]')
 
+  // 3 秒 —— 这条断言的意义就在「及时」。上一版给了 30 秒宽限,
+  // 于是「答完才出现」也算通过,等于什么都没测。
   const grew = await page
     .waitForFunction((n) => document.querySelectorAll('.session-row').length > n, rowsBefore, {
-      timeout: 30_000,
+      timeout: 3_000,
     })
     .then(() => true)
     .catch(() => false)
-  check('一发消息侧栏就多出这条', grew, `${rowsBefore} 条起`)
+  check('一发消息侧栏就多出这条(3 秒内)', grew, `${rowsBefore} 条起`)
+  // 而且此刻这一轮还没答完 —— 否则「及时」是碰巧的
+  const stillBusy = await page.$$eval('.composer [data-state="stop"]', (n) => n.length)
+  check('出现时这一轮还在跑', stillBusy === 1)
 
   const thinkingText = await page
     .waitForSelector('.thinking', { timeout: 30_000 })
@@ -605,20 +610,25 @@ try {
     check('模型没有收到「没人作答」', !/没.{0,2}(选|回答|作答)|did not answer/.test(tail), tail.trim().slice(0, 60))
   }
 
-  // /mcp 这类命令不归界面接管,是发给 CLI 的 —— 它有回复,只是回复比终端里简略。
-  // 钉一条,免得又被当成「石沉大海」。
+  // /mcp 由界面接管:直接问 SDK 要状态,画成面板。
+  // 不再把命令发出去换一段「详情请去终端看」的降级文本回来。
   const before = await page.$$eval('.msg-claude', (n) => n.length)
   await page.fill('.composer textarea', '/mcp')
   await page.click('.composer [data-state="send"]')
-  const answered = await page
-    .waitForFunction((n) => document.querySelectorAll('.msg-claude').length > n, before, {
-      timeout: 90_000,
-    })
+  const panel = await page
+    .waitForSelector('.mcp-panel', { timeout: 20_000 })
     .then(() => true)
     .catch(() => false)
-  const mcpText = await page.$$eval('.msg-claude', (n) => n[n.length - 1]?.textContent ?? '')
-  check('/mcp 有回复,不是石沉大海', answered && /MCP/i.test(mcpText), mcpText.trim().slice(0, 70))
-  await settle(page)
+  check('/mcp 画出服务面板', panel)
+  if (panel) {
+    const names = await page.$$eval('.mcp-name', (n) => n.map((e) => e.textContent?.trim()))
+    const head = await page.$eval('.mcp-panel', (e) => e.textContent ?? '')
+    check('面板里有服务或明确说没有', names.length > 0 || /没有配置/.test(head), names.join(', ').slice(0, 60))
+    const statuses = await page.$$eval('.mcp-status', (n) => n.map((e) => e.textContent?.trim()))
+    check('每个服务标了连接状态', names.length === statuses.length, statuses.join(', ').slice(0, 60))
+  }
+  const after = await page.$$eval('.msg-claude', (n) => n.length)
+  check('/mcp 没有被当成消息发出去', after === before, `${before} → ${after}`)
 
   // ---- 正文排版 --------------------------------------------------------------
   // 以前整块是纯文本,**粗体**、列表、```代码块``` 的原始符号直接印在界面上。

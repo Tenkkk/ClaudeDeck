@@ -348,6 +348,7 @@ function registerIpc(): void {
   ipcMain.handle('chat:toBackground', () => active?.moveToBackground() ?? false)
   ipcMain.handle('chat:usage', () => active?.usage() ?? null)
   ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
+  ipcMain.handle('chat:mcp', () => active?.mcpServers() ?? [])
 
   ipcMain.handle('app:versions', async (): Promise<Versions> => {
     const report = await runDoctor()

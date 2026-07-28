@@ -15,6 +15,7 @@ import type {
   ContextUsage,
   EffortLevel,
   ElicitationField,
+  McpServer,
   PermissionMode,
   ToolRow,
   UsageInfo,
@@ -448,6 +449,24 @@ export class ChatSession {
       description: m.description,
       effortLevels: m.supportedEffortLevels,
     }))
+  }
+
+  /** `/mcp` 的数据源。SDK 直接给,不必去解析那段降级文本。 */
+  async mcpServers(): Promise<McpServer[]> {
+    if (!this.q) return []
+    try {
+      const list = await this.q.mcpServerStatus()
+      return list.map((s) => ({
+        name: s.name,
+        status: s.status,
+        scope: s.scope,
+        error: s.error,
+        toolCount: s.tools?.length ?? 0,
+      }))
+    } catch {
+      // 拿不到就当没有 —— 这一条不该把整个界面拖down
+      return []
+    }
   }
 
   /** Context window pressure. Over 80% is the only warning before compaction. */

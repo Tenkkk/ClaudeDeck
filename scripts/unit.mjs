@@ -14,6 +14,7 @@ import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 import { bundledExecutablePath } from '../src/main/binary.ts'
 import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
 import { parseMarkdown, parseInline } from '../src/renderer/src/lib/markdown.ts'
+import { flatten } from '../src/renderer/src/lib/commands.ts'
 
 let passed = 0
 let failed = 0
@@ -396,6 +397,37 @@ console.log('\nmarkdown —— 正文解析')
   eq('孤立的星号原样保留', parseInline('2 * 3 = 6')[0].text, '2 * 3 = 6')
   eq('空串不产出节点', parseInline('').length, 0)
   eq('HTML 当字面文本', parseInline('<script>x</script>')[0].kind, 'text')
+}
+
+// ---- 命令面板的排序 --------------------------------------------------------
+// 这一段是照着实际踩到的样子写的:敲 /mcp,前三条却是描述里含 "MCP" 的别的命令。
+console.log('\n命令面板 —— 相关度排序')
+{
+  const cmds = [
+    { name: 'fewer-permission-prompts', description: 'Scan transcripts for Bash and MCP tool calls', argumentHint: '', source: 'builtin' },
+    { name: 'doctor', description: 'Health-check setup, mcp diagnostics', argumentHint: '', source: 'builtin' },
+    { name: 'claude-api', description: 'Reference for the Claude API — tool use, MCP, agents', argumentHint: '', source: 'builtin' },
+    { name: 'mcp', description: 'Manage MCP servers', argumentHint: '', source: 'builtin' },
+    { name: 'mcp-debug', description: '', argumentHint: '', source: 'project' },
+    { name: 'usage', description: 'Show usage', aliases: ['cost', 'stats'], argumentHint: '', source: 'builtin' },
+  ]
+  const names = (q) => flatten(cmds, q).map((c) => c.name)
+
+  eq('全等的排第一', names('mcp')[0], 'mcp')
+  eq('描述命中的沉到后面', names('mcp').indexOf('doctor') > names('mcp').indexOf('mcp-debug'), true)
+  eq('名字前缀压过描述', names('mcp')[1], 'mcp-debug')
+  eq('前缀命中优先于包含', names('mc')[0], 'mcp')
+  // 数组要比字符串 —— eq 用的是 ===,两个内容相同的数组永远不相等
+  eq('别名也能搜到', names('cost').join(','), 'usage')
+  eq('搜不到就不给', names('zzz').length, 0)
+  eq('空关键词全给', names('').length, cmds.length)
+
+  // 全等命中要越过分组置顶 —— 打全了名字就是要它,不该因为它是项目命令被沉下去
+  const proj = [
+    { name: 'mcpx', description: '', argumentHint: '', source: 'builtin' },
+    { name: 'deploy', description: '', argumentHint: '', source: 'project' },
+  ]
+  eq('全等的越过分组置顶', flatten(proj, 'deploy')[0].name, 'deploy')
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

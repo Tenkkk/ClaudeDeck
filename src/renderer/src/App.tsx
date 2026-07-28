@@ -11,6 +11,7 @@ import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
 import Markdown from './components/Markdown.js'
+import McpPanel from './components/McpPanel.js'
 import Resizer from './components/Resizer.js'
 import { clampMidcol, clampSidebar, loadWidths, saveWidths } from './lib/columns.js'
 import Thinking from './components/Thinking.js'
@@ -124,6 +125,8 @@ export default function App(): React.JSX.Element {
   const [fileDirty, setFileDirty] = useState(false)
   const [tasks, setTasks] = useState<BackgroundTask[]>([])
   const [forkFrom, setForkFrom] = useState<string | null>(null)
+  /** 刚发出、还没在 SDK 的 store 里露面的那条会话 —— 侧栏先摆着 */
+  const [pendingSession, setPendingSession] = useState<{ path: string; title: string } | null>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
@@ -157,7 +160,13 @@ export default function App(): React.JSX.Element {
   }, [])
 
   const refreshSessions = useCallback(async () => {
-    setSessionsByProject(await window.api.sessions.byProject())
+    const map = await window.api.sessions.byProject()
+    setSessionsByProject(map)
+    // 真实列表里出现了当前会话,占位就该退场
+    const id = activeSessionRef.current
+    if (id && Object.values(map).some((rows) => rows.some((s) => s.sessionId === id))) {
+      setPendingSession(null)
+    }
   }, [])
 
   /** 额度与上下文都随对话变化,每轮结束刷新一次。 */
@@ -361,7 +370,33 @@ export default function App(): React.JSX.Element {
       return
     }
 
+    // /mcp 的数据 SDK 直接给,不必把命令发出去换一段降级文本回来。
+    // 结果留在对话流里 —— 你跑了一条命令,就该看见它的回执。
+    if (text.toLowerCase() === '/mcp') {
+      setDraft('')
+      const servers = await window.api.chat.mcp()
+      setTranscript((t) => [...t, { kind: 'mcp', servers }])
+      return
+    }
+
     setDraft('')
+
+    /*
+     * 侧栏那一条要**现在**就出现,不是等这一轮答完。
+     *
+     * 上一版我把刷新挂在 session 事件上,以为那是「发送时」—— 其实不是:
+     * chat.open() 一进工作区就建了 query,system/init 那会儿就带来了 session_id,
+     * 事件在你还没打字时就发过了;真发消息时 id 没变,不再触发。
+     *
+     * 所以这里先乐观地摆一条上去,标题就用你刚打的那句(store 里此刻的标题
+     * 本来也是它 —— Claude 生成的摘要要晚一些才盖上来)。等真实列表里出现
+     * 这个 session_id,这条占位就自动让位,中间不会闪。
+     */
+    const ws = config?.activeWorkspace
+    if (ws) {
+      const known = (sessionsByProject[ws] ?? []).some((s) => s.sessionId === activeSessionRef.current)
+      if (!known) setPendingSession({ path: ws, title: text })
+    }
     setTranscript((t) => [...t, { kind: 'user', text, ts: Date.now() }])
     setBusy(true)
     setError(null)
@@ -409,8 +444,33 @@ export default function App(): React.JSX.Element {
 
   const mode = config?.permissionMode ?? 'default'
   const activeProject = config?.projects.find((p) => p.path === config.activeWorkspace)
+  /**
+   * 侧栏看到的列表 = 真实列表 + 那条还没落到 store 里的占位。
+   *
+   * 占位只在真实列表还没有它的时候补上,所以不会出现「先冒出来、
+   * 刷新时消失、答完又冒出来」这种闪烁。
+   */
+  const sidebarSessions = ((): Record<string, SessionListItem[]> => {
+    if (!pendingSession) return sessionsByProject
+    const rows = sessionsByProject[pendingSession.path] ?? []
+    const id = activeSession
+    if (id && rows.some((s) => s.sessionId === id)) return sessionsByProject
+    return {
+      ...sessionsByProject,
+      [pendingSession.path]: [
+        {
+          sessionId: id ?? '__pending__',
+          title: pendingSession.title,
+          preview: pendingSession.title,
+          lastModified: Date.now(),
+        },
+        ...rows,
+      ],
+    }
+  })()
+
   const activeSessions = config?.activeWorkspace
-    ? (sessionsByProject[config.activeWorkspace] ?? [])
+    ? (sidebarSessions[config.activeWorkspace] ?? [])
     : []
 
   // 窗口左边缘就是 shell 的左边缘(没有更外层的容器),所以 clientX 直接
@@ -447,7 +507,7 @@ export default function App(): React.JSX.Element {
     >
       <Sidebar
         projects={config?.projects ?? []}
-        sessionsByProject={sessionsByProject}
+        sessionsByProject={sidebarSessions}
         activeWorkspace={config?.activeWorkspace ?? null}
         activeSession={activeSession}
         usage={usage}
@@ -541,6 +601,16 @@ export default function App(): React.JSX.Element {
               <ToolRow key={`${item.row.id}-${i}`} row={item.row} />
             ) : item.kind === 'thinking' ? (
               <Thought key={i} text={item.text} />
+            ) : item.kind === 'mcp' ? (
+              <McpPanel
+                key={i}
+                servers={item.servers}
+                onReconnect={(name) => {
+                  // 没有公开的重连方法,但 CLI 自己提示可以这么发 —— 走它的路
+                  setDraft(`/mcp reconnect ${name}`)
+                  composerRef.current?.focus()
+                }}
+              />
             ) : (
               <Message
                 key={i}

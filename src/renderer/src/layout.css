@@ -1607,6 +1607,107 @@ kbd,
   padding: var(--s8) var(--s12) var(--s8) calc(var(--s16) + var(--s12));
 }
 
+/* ---- MCP 面板 · /mcp 的结果 ---- */
+
+.mcp-panel {
+  max-width: var(--w-prose);
+  margin: 0 0 var(--s12);
+  padding: var(--s12);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.mcp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s8);
+  margin-bottom: var(--s4);
+}
+
+.mcp-group + .mcp-group {
+  margin-top: var(--s4);
+}
+
+.mcp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  flex-wrap: wrap;
+  padding: var(--s4) 0;
+  font-size: var(--fs-sm);
+}
+
+.mcp-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+}
+
+/* 状态用色块和文字两重表达 —— 只靠颜色的话,色觉障碍就读不出来 */
+.mcp-dot.ok {
+  background: var(--live);
+}
+
+.mcp-dot.bad {
+  background: var(--warn);
+}
+
+.mcp-dot.warn {
+  background: var(--accent);
+}
+
+.mcp-dot.muted {
+  background: var(--mark);
+}
+
+.mcp-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--ink);
+}
+
+.mcp-status.ok {
+  color: var(--live);
+}
+
+.mcp-status.bad {
+  color: var(--warn);
+}
+
+.mcp-status.warn {
+  color: var(--accent);
+}
+
+.mcp-status.muted {
+  color: var(--muted);
+}
+
+.mcp-tools,
+.mcp-error {
+  color: var(--muted);
+}
+
+.mcp-error {
+  flex-basis: 100%;
+  margin-left: 15px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-word;
+}
+
+.mcp-action {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: var(--r-control);
+  padding: var(--s2) var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+}
+
 /* ---- 思考 ----
  * 灰、窄、默认折叠 —— 它是过程不是结论,不该和回答抢注意力。 */
 
