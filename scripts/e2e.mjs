@@ -83,7 +83,7 @@ try {
   await page.waitForLoadState('domcontentloaded')
 
   // ---- 桥接层 -------------------------------------------------------------
-  console.log('[0/7] 进程桥接')
+  console.log('[0/8] 进程桥接')
   const bridged = await page.evaluate(() => typeof window.api?.chat?.send === 'function')
   check('preload 的 contextBridge 生效', bridged)
 
@@ -99,7 +99,7 @@ try {
   )
 
   // ---- 功能 1:聊天 -------------------------------------------------------
-  console.log('\n[1/7] 聊天')
+  console.log('\n[1/8] 聊天')
   await page.fill('.composer textarea', '只回复两个字:你好')
   await send(page)
 
@@ -116,7 +116,7 @@ try {
   await settle(page)
 
   // ---- 功能 2:切换模型 ---------------------------------------------------
-  console.log('\n[2/7] 切换模型')
+  console.log('\n[2/8] 切换模型')
   // 控件条上只显示第一个词,完整列表在弹层里(§15)
   await page.click('[data-control="model"]')
   await page.waitForSelector('.popover .pop-row', { timeout: 10_000 })
@@ -155,7 +155,7 @@ try {
   }
 
   // ---- 功能 3:会话列表与切换 ---------------------------------------------
-  console.log('\n[3/7] 会话列表与切换')
+  console.log('\n[3/8] 会话列表与切换')
   await page.waitForFunction(
     () => document.querySelectorAll('.sidebar-scroll .session-row').length > 0,
     { timeout: 30_000 },
@@ -197,7 +197,7 @@ try {
   check('被选中的会话有选中态', marked === 1, `${marked} 个高亮`)
 
   // ---- 工具行 · §06 ---------------------------------------------------------
-  console.log('\n[4/7] 工具行')
+  console.log('\n[4/8] 工具行')
   await page.fill('.composer textarea', '运行 echo e2e-tool-ok,不要解释')
   await send(page)
   await page.waitForFunction(
@@ -243,11 +243,14 @@ try {
   }
 
   // 悬停动作行:复制
-  const copyBtns = await page.$$eval('.msg-action', (n) => n.map((e) => e.textContent))
-  check('每条消息都带复制动作', copyBtns.length > 0 && copyBtns.every((t) => t === '复制'), `${copyBtns.length} 个`)
+  // .msg-action 现在既是「复制」也是「↳ 分支」,只数复制那一种
+  const copyBtns = await page.$$eval('.msg-action', (n) =>
+    n.map((e) => e.textContent?.trim() ?? '').filter((t) => t === '复制'),
+  )
+  check('每条消息都带复制动作', copyBtns.length > 0, `${copyBtns.length} 个`)
 
   // ---- 斜杠命令面板 · §15 -------------------------------------------------
-  console.log('\n[5/7] 斜杠命令面板')
+  console.log('\n[5/8] 斜杠命令面板')
   await settle(page)
   await page.fill('.composer textarea', '/')
   const opened = await page
@@ -289,9 +292,52 @@ try {
     await page.waitForTimeout(200)
   }
 
+  // ---- 从这条重答:分支与文件回退 · §12 -----------------------------------
+  console.log('\n[6/8] 分支与文件回退')
+  // 消息 id 是每轮结束后从 store 重载才有的 —— 直播流里的用户消息不带 uuid
+  const forkable = await page
+    .waitForFunction(
+      () => [...document.querySelectorAll('.msg-action')].some((b) => b.textContent?.includes('↳')),
+      { timeout: 30_000 },
+    )
+    .then(() => true)
+    .catch(() => false)
+  check('消息上出现「↳」分支入口', forkable)
+
+  if (forkable) {
+    const beforeFork = await page.$$eval('.sidebar-scroll .session-row', (n) => n.length)
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('.msg-action')].find((b) =>
+        b.textContent?.includes('从这里重答'),
+      )
+      btn?.click()
+    })
+    await page.waitForSelector('.fork-card', { timeout: 10_000 })
+    check('弹出分支确认', true)
+
+    // 「能回退 N 个文件」必须来自真的 dryRun,不能是编的
+    await page.waitForFunction(
+      () => !document.querySelector('.fork-check .hint')?.textContent?.includes('正在确认'),
+      { timeout: 20_000 },
+    )
+    const rewindHint = (await page.textContent('.fork-check .hint')) ?? ''
+    check('回退提示来自真实的 dryRun', rewindHint.length > 0 && !rewindHint.includes('正在确认'), rewindHint.slice(0, 50))
+
+    await page.click('.fork-card .primary')
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('.sidebar-scroll .session-row').length > n,
+      beforeFork,
+      { timeout: 60_000 },
+    )
+    const afterFork = await page.$$eval('.sidebar-scroll .session-row', (n) => n.length)
+    check('分支后侧栏多出一条', afterFork > beforeFork, `${beforeFork} → ${afterFork}`)
+    const titles = await page.$$eval('.session-row .title', (n) => n.map((e) => e.textContent ?? ''))
+    check('分支标题带「分支」', titles.some((t) => t.includes('分支')), titles.find((t) => t.includes('分支')) ?? titles.join(' / '))
+  }
+
   // ---- .claude 配置栏 · §10 ----------------------------------------------
   // 这一节纯文件读写,不产生 API 调用
-  console.log('\n[6/7] .claude 配置栏')
+  console.log('\n[7/8] .claude 配置栏')
   await page.click('.claude-node')
   await page.waitForSelector('.claude-file', { timeout: 10_000 })
   const files = await page.$$eval('.claude-file .mono', (n) => n.map((e) => e.textContent?.trim()))
@@ -348,7 +394,7 @@ try {
   check('选「不保存」后中栏关闭', true)
 
   // ---- 会话右键菜单 · §08 ------------------------------------------------
-  console.log('\n[7/7] 会话右键菜单')
+  console.log('\n[8/8] 会话右键菜单')
   await page.click('.sidebar-scroll .session-row', { button: 'right' })
   await page.waitForSelector('.ctx', { timeout: 10_000 })
   const menuItems = await page.$$eval('.ctx .ctx-row', (n) =>

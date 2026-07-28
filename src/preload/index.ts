@@ -9,6 +9,7 @@ import type {
   EffortLevel,
   ModelOption,
   PermissionMode,
+  RewindPreview,
   SaveResult,
   SessionListItem,
   SlashCommandItem,
@@ -52,6 +53,15 @@ const api = {
       ipcRenderer.invoke('sessions:tag', sessionId, tag),
     fork: (sessionId: string, title?: string): Promise<string> =>
       ipcRenderer.invoke('sessions:fork', sessionId, title),
+    rewindPreview: (messageId: string): Promise<RewindPreview> =>
+      ipcRenderer.invoke('sessions:rewindPreview', messageId),
+    forkFrom: (
+      sessionId: string,
+      messageId: string,
+      rewind: boolean,
+      title?: string,
+    ): Promise<string> =>
+      ipcRenderer.invoke('sessions:forkFrom', sessionId, messageId, rewind, title),
   },
   claude: {
     list: (): Promise<ClaudeEntry[]> => ipcRenderer.invoke('claude:list'),
@@ -77,6 +87,8 @@ const api = {
       ipcRenderer.invoke('chat:ask', id, answer),
     respondPlan: (id: string, accepted: boolean): Promise<void> =>
       ipcRenderer.invoke('chat:plan', id, accepted),
+    stopTask: (taskId: string): Promise<void> => ipcRenderer.invoke('chat:stopTask', taskId),
+    toBackground: (): Promise<boolean> => ipcRenderer.invoke('chat:toBackground'),
     usage: (): Promise<UsageInfo | null> => ipcRenderer.invoke('chat:usage'),
     context: (): Promise<ContextUsage | null> => ipcRenderer.invoke('chat:context'),
     interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),

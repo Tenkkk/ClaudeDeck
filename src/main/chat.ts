@@ -104,6 +104,8 @@ export class ChatSession {
   private toolRows = new Map<string, ToolRow>()
   /** 勾过「本次会话内不再问」的工具名。换会话即失效。 */
   private alwaysAllow = new Set<string>()
+  /** 后台任务第一次被看见的时刻 —— SDK 的推送里没有时间,只能自己记 */
+  private taskSince = new Map<string, number>()
   private pendingAsks = new Map<string, (v: AskAnswer | null) => void>()
   private pendingPlans = new Map<string, (accepted: boolean) => void>()
   private pendingElicitations = new Map<
@@ -286,6 +288,25 @@ export class ChatSession {
       return
     }
 
+    // 后台任务清单变了 · §11
+    if (msg.type === 'system' && msg.subtype === 'background_tasks_changed') {
+      const now = Date.now()
+      const tasks = msg.tasks.map((t) => {
+        if (!this.taskSince.has(t.task_id)) this.taskSince.set(t.task_id, now)
+        return {
+          id: t.task_id,
+          type: t.task_type,
+          description: t.description,
+          since: this.taskSince.get(t.task_id) ?? now,
+        }
+      })
+      // 已经消失的任务不用再记时间
+      const live = new Set(tasks.map((t) => t.id))
+      for (const id of this.taskSince.keys()) if (!live.has(id)) this.taskSince.delete(id)
+      this.emit({ type: 'tasks', tasks })
+      return
+    }
+
     if (msg.type === 'result') {
       this.emit({ type: 'done' })
     }
@@ -398,6 +419,33 @@ export class ChatSession {
     } catch {
       return null
     }
+  }
+
+  /** dryRun:只问「能回退几个文件」,不动磁盘。 */
+  async rewindPreview(messageId: string) {
+    if (!this.q) return null
+    try {
+      return await this.q.rewindFiles(messageId, { dryRun: true })
+    } catch {
+      return null
+    }
+  }
+
+  async rewindFiles(messageId: string): Promise<void> {
+    try {
+      await this.q?.rewindFiles(messageId)
+    } catch {
+      // 回退失败不该把分支这件事也一起搞砸 —— 分支照做,文件保持原样
+    }
+  }
+
+  async stopTask(taskId: string): Promise<void> {
+    await this.q?.stopTask(taskId)
+  }
+
+  /** Ctrl B —— 把当前前台任务转到后台,等于终端里的那个快捷键。 */
+  async moveToBackground(): Promise<boolean> {
+    return (await this.q?.backgroundTasks()) ?? false
   }
 
   async interrupt(): Promise<void> {

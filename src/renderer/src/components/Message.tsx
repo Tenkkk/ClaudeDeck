@@ -10,17 +10,20 @@ import { useState } from 'react'
  * 所以悬停不会让后面的内容跳动。正在输出的那条不出动作行 —— 半截文本
  * 复制过去没意义。
  *
- * 这一步按 brief §7 只做「复制」;「编辑并重发 ↳」「从这里重答 ↳」要等
- * forkSession,在第 7 步。
+ * 「编辑并重发 ↳」「从这里重答 ↳」走 forkSession —— 见 ForkDialog(§12)。
  */
 export default function Message({
   role,
   text,
   ts,
+  id,
+  onFork,
 }: {
   role: 'user' | 'assistant'
   text: string
   ts?: number
+  id?: string
+  onFork?: (id: string) => void
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const time = ts
@@ -41,6 +44,14 @@ export default function Message({
         >
           {copied ? '已复制' : '复制'}
         </button>
+        {/* ↳ 只有一个意思:会多出一条分支会话 · §12。
+            消息还没进 SDK 的 store 时没有 id,那就不给这个动作 ——
+            给一个点了没反应的按钮更糟。 */}
+        {id && onFork && (
+          <button className="msg-action" onClick={() => onFork(id)}>
+            {role === 'user' ? '编辑并重发 ↳' : '从这里重答 ↳'}
+          </button>
+        )}
         {time && <span className="msg-time">{time}</span>}
       </div>
     </div>

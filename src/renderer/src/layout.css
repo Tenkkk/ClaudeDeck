@@ -2158,10 +2158,127 @@ button.todo-box {
   background: var(--accent);
 }
 
-/* 子进程胶囊:没有后台任务时整颗消失,不留空位 · §11 */
+/* ---- 从这条重答的确认 · §12 ---- */
+
+.fork-card {
+  width: 100%;
+  max-width: var(--w-prose);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-popover);
+  padding: var(--s16);
+  display: grid;
+  gap: var(--s8);
+}
+
+.fork-card p {
+  margin: 0;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.fork-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s8);
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--r-control);
+  padding: var(--s12);
+}
+
+.fork-check:hover:not(.disabled) {
+  background: var(--bg);
+}
+
+.fork-check.disabled {
+  opacity: 0.55;
+}
+
+.fork-check .todo-box {
+  margin-top: 2px;
+}
+
+.fork-check-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fork-card .row {
+  justify-content: flex-end;
+}
+
+/* ---- 子进程 · §11 ----
+   胶囊没有后台任务时整颗消失,不留空位(组件里直接返回 null) */
+
 .chip.live {
   color: var(--live);
   border-color: var(--live);
+}
+
+.chip.live .dot {
+  width: var(--s6);
+  height: var(--s6);
+  border-radius: var(--r-pill);
+  background: var(--live);
+  animation: cd-breathe 2.4s ease-in-out infinite;
+}
+
+.task-rest {
+  color: var(--muted);
+}
+
+.task-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+  padding: var(--s8) var(--s12) var(--s4);
+}
+
+.task-row {
+  display: grid;
+  gap: 2px;
+  padding: var(--s8) var(--s12);
+  border-radius: var(--r-inline);
+}
+
+.task-row:hover {
+  background: var(--bg);
+}
+
+.task-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+}
+
+.task-type {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--live);
+}
+
+.task-age {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+}
+
+.task-meta .card-remember {
+  margin-left: auto;
+}
+
+.task-desc {
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ============================================================

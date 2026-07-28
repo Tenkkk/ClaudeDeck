@@ -3,6 +3,7 @@ import AskCard from './components/AskCard.js'
 import CommandPalette, { flatten } from './components/CommandPalette.js'
 import ControlBar from './components/ControlBar.js'
 import ElicitationCard from './components/ElicitationCard.js'
+import ForkDialog from './components/ForkDialog.js'
 import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
 import MidColumn from './components/MidColumn.js'
@@ -19,6 +20,7 @@ import {
   type ContextUsage,
   type DoctorReport,
   type AskCard as AskCardData,
+  type BackgroundTask,
   type ClaudeEntry,
   type ElicitationCard as ElicitationCardData,
   type PlanCard as PlanCardData,
@@ -95,8 +97,36 @@ export default function App(): React.JSX.Element {
   const [claudeEntries, setClaudeEntries] = useState<ClaudeEntry[]>([])
   const [openFile, setOpenFile] = useState<{ project: string; path: string } | null>(null)
   const [fileDirty, setFileDirty] = useState(false)
+  const [tasks, setTasks] = useState<BackgroundTask[]>([])
+  const [forkFrom, setForkFrom] = useState<string | null>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+
+  const activeSessionRef = useRef<string | null>(null)
+
+  /**
+   * 每轮结束后把消息 id 补进 transcript —— 分支和文件回退都要它,
+   * 而直播流里的用户消息不带 uuid,只有 store 里有(§12)。
+   *
+   * 注意这里**只合并 id,不替换整条 transcript**:SessionMessage 里没有
+   * tool_use_result,拿历史整个覆盖会把直播已经收到的 Bash 输出、Edit diff
+   * 全抹掉 —— 表现为「一轮结束,工具行的展开按钮就没了」。
+   */
+  const mergeMessageIds = useCallback(async () => {
+    const sid = activeSessionRef.current
+    if (!sid) return
+    const stored = await window.api.sessions.history(sid)
+    const ids = stored.flatMap((i) => (i.kind === 'tool' ? [] : [i.id]))
+    setTranscript((cur) => {
+      let n = -1
+      return cur.map((item) => {
+        if (item.kind === 'tool') return item
+        n += 1
+        const id = ids[n]
+        return id && !item.id ? { ...item, id } : item
+      })
+    })
+  }, [])
 
   const refreshSessions = useCallback(async () => {
     setSessionsByProject(await window.api.sessions.byProject())
@@ -131,6 +161,7 @@ export default function App(): React.JSX.Element {
     return window.api.chat.onEvent((event: ChatEvent) => {
       if (event.type === 'session') {
         setActiveSession(event.sessionId)
+        activeSessionRef.current = event.sessionId
       } else if (event.type === 'delta') {
         setStreaming((s) => s + event.text)
       } else if (event.type === 'tool') {
@@ -148,6 +179,8 @@ export default function App(): React.JSX.Element {
         setAsk(event.card)
       } else if (event.type === 'plan') {
         setPlan(event.card)
+      } else if (event.type === 'tasks') {
+        setTasks(event.tasks)
       } else if (event.type === 'unknownDialog') {
         setUnknownDialog(event.notice.dialogKind)
       } else if (event.type === 'permission') {
@@ -164,12 +197,14 @@ export default function App(): React.JSX.Element {
         setBusy(false)
         void refreshSessions()
         void refreshMeters()
+        // 只把消息 id 合并进来,不替换 transcript —— 见 mergeMessageIds
+        void mergeMessageIds()
       } else if (event.type === 'error') {
         setError(event.message)
         setBusy(false)
       }
     })
-  }, [refreshSessions, refreshMeters])
+  }, [refreshSessions, refreshMeters, mergeMessageIds])
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight })
@@ -243,6 +278,7 @@ export default function App(): React.JSX.Element {
       setConfig(await window.api.projects.activate(projectPath))
     }
     setActiveSession(sessionId)
+    activeSessionRef.current = sessionId
     setTranscript(await window.api.sessions.history(sessionId))
     await window.api.chat.open(sessionId)
     setModels(await window.api.chat.models())
@@ -251,6 +287,7 @@ export default function App(): React.JSX.Element {
 
   async function newSession(): Promise<void> {
     setActiveSession(null)
+    activeSessionRef.current = null
     setTranscript([])
     setStreaming('')
     setError(null)
@@ -394,7 +431,14 @@ export default function App(): React.JSX.Element {
             item.kind === 'tool' ? (
               <ToolRow key={`${item.row.id}-${i}`} row={item.row} />
             ) : (
-              <Message key={i} role={item.kind} text={item.text} ts={item.ts} />
+              <Message
+                key={i}
+                role={item.kind}
+                text={item.text}
+                ts={item.ts}
+                id={item.id}
+                onFork={setForkFrom}
+              />
             ),
           )}
 
@@ -508,6 +552,27 @@ export default function App(): React.JSX.Element {
             </div>
           )}
 
+          {forkFrom && activeSession && (
+            <ForkDialog
+              messageId={forkFrom}
+              onCancel={() => setForkFrom(null)}
+              onConfirm={async (rewind) => {
+                const title = `${
+                  activeSessions.find((s) => s.sessionId === activeSession)?.title ?? '会话'
+                } 分支`
+                const newId = await window.api.sessions.forkFrom(
+                  activeSession,
+                  forkFrom,
+                  rewind,
+                  title,
+                )
+                setForkFrom(null)
+                await refreshSessions()
+                if (config?.activeWorkspace) await openSession(config.activeWorkspace, newId)
+              }}
+            />
+          )}
+
           {error && <div className="error-line">{error}</div>}
         </div>
 
@@ -553,6 +618,12 @@ export default function App(): React.JSX.Element {
                     return
                   }
                 }
+                // Ctrl B —— 把当前前台任务转到后台,和终端里一致 · §11
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+                  e.preventDefault()
+                  void window.api.chat.toBackground()
+                  return
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   void send()
@@ -588,6 +659,9 @@ export default function App(): React.JSX.Element {
               }}
               onSend={() => void send()}
               onStop={() => void window.api.chat.interrupt()}
+              tasks={tasks}
+              onStopTask={(id) => void window.api.chat.stopTask(id)}
+              onStopAllTasks={() => tasks.forEach((t) => void window.api.chat.stopTask(t.id))}
             />
           </div>
         </div>

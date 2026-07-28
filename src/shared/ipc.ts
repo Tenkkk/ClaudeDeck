@@ -222,6 +222,36 @@ export type SaveResult =
   | { ok: false; reason: 'invalid-json'; line: number; message: string }
   | { ok: false; reason: 'write-failed'; message: string }
 
+/**
+ * 后台任务 · §11。
+ *
+ * 注意 SDK 的推送只带 task_id / task_type / description —— **没有状态、
+ * 没有命令、没有时长**。所以:
+ *   - 时长由应用自己记(第一次见到它的时刻),这是我们知道的
+ *   - 「查看输出」只对 subagent 可行(getSubagentMessages);shell 任务
+ *     的输出没有可达通道,所以那个入口不画 —— 不画比画个点不动的强
+ */
+export interface BackgroundTask {
+  id: string
+  /** 'shell' | 'subagent' | 'monitor' | 'workflow' —— 标签直接用它,不自己造词 */
+  type: string
+  description: string
+  /** 应用第一次见到它的时刻,用来算已运行多久 */
+  since: number
+}
+
+/**
+ * 从某条消息分支出去之前的预览 · §12。
+ *
+ * 「能回退 N 个改动过的文件」那个数字必须来自真的 dryRun,不能编 ——
+ * 只 fork 对话不回退磁盘会让上下文和硬盘不一致,之后 Edit 会开始报错(坑 4.2)。
+ */
+export interface RewindPreview {
+  canRewind: boolean
+  fileCount: number
+  reason?: string
+}
+
 export interface ModelOption {
   value: string
   displayName: string
@@ -282,8 +312,8 @@ export type ToolRow =
  * the transcript stays quiet until you reach for something.
  */
 export type TranscriptItem =
-  | { kind: 'user'; text: string; ts?: number }
-  | { kind: 'assistant'; text: string; ts?: number }
+  | { kind: 'user'; text: string; ts?: number; id?: string }
+  | { kind: 'assistant'; text: string; ts?: number; id?: string }
   | { kind: 'tool'; row: ToolRow }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
@@ -302,6 +332,8 @@ export type ChatEvent =
   | { type: 'ask'; card: AskCard }
   /** Claude 提交计划请你点头 · §06 */
   | { type: 'plan'; card: PlanCard }
+  /** 后台任务清单变了 · §11。没有任务时 tasks 为空数组,胶囊整颗消失 */
+  | { type: 'tasks'; tasks: BackgroundTask[] }
   /** 收到不会画的 dialogKind,已回 cancelled · §06 兜底 */
   | { type: 'unknownDialog'; notice: UnknownDialogNotice }
   | { type: 'done' }

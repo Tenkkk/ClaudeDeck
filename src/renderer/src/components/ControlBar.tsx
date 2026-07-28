@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import Popover from './Popover.js'
+import TaskChip from './TaskChip.js'
 import {
   EFFORT_LEVELS,
   PERMISSION_MODES,
   type EffortLevel,
+  type BackgroundTask,
   type ModelOption,
   type PermissionMode,
 } from '../../../shared/ipc.js'
@@ -29,6 +31,9 @@ export default function ControlBar({
   onEffort,
   onSend,
   onStop,
+  tasks,
+  onStopTask,
+  onStopAllTasks,
 }: {
   mode: PermissionMode
   models: ModelOption[]
@@ -42,6 +47,9 @@ export default function ControlBar({
   onEffort: (v: EffortLevel) => void
   onSend: () => void
   onStop: () => void
+  tasks: BackgroundTask[]
+  onStopTask: (id: string) => void
+  onStopAllTasks: () => void
 }): React.JSX.Element {
   const [open, setOpen] = useState<null | 'mode' | 'model' | 'effort'>(null)
   const toggle = (k: 'mode' | 'model' | 'effort'): void => setOpen((o) => (o === k ? null : k))
@@ -93,6 +101,9 @@ export default function ControlBar({
           ))}
         </Popover>
       </div>
+
+      {/* 子进程胶囊插在权限右边;没有后台任务时整颗消失 · §11 */}
+      <TaskChip tasks={tasks} onStop={onStopTask} onStopAll={onStopAllTasks} />
 
       <div className="right">
         {/* ---- 模型:纯文字,不画胶囊 ---- */}

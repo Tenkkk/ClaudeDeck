@@ -29,6 +29,7 @@ import type {
   ClaudeEntry,
   EffortLevel,
   PermissionMode,
+  RewindPreview,
   SaveResult,
   SessionListItem,
   SlashCommandItem,
@@ -171,6 +172,7 @@ function registerIpc(): void {
       tool_use_id?: string
     }
     interface Msg {
+      uuid?: string
       message?: { role?: string; content?: unknown }
       tool_use_result?: unknown
     }
@@ -181,7 +183,7 @@ function registerIpc(): void {
       if (role !== 'user' && role !== 'assistant') continue
 
       if (typeof content === 'string') {
-        if (content.trim()) out.push({ kind: role, text: content })
+        if (content.trim()) out.push({ kind: role, text: content, id: raw.uuid })
         continue
       }
       if (!Array.isArray(content)) continue
@@ -204,7 +206,7 @@ function registerIpc(): void {
           if (at >= 0) out[at] = { kind: 'tool', row: filled }
         }
       }
-      if (text.trim()) out.push({ kind: role, text })
+      if (text.trim()) out.push({ kind: role, text, id: raw.uuid })
     }
 
     return out
@@ -233,6 +235,41 @@ function registerIpc(): void {
     })
     return result.sessionId
   })
+
+  /**
+   * 分支前先问一次能不能回退文件 · §12。
+   * 「能回退 N 个文件」必须是真数字 —— 所以这里跑一次 dryRun。
+   */
+  ipcMain.handle(
+    'sessions:rewindPreview',
+    async (_e, messageId: string): Promise<RewindPreview> => {
+      const r = await active?.rewindPreview(messageId)
+      if (!r) return { canRewind: false, fileCount: 0, reason: '当前没有活着的会话。' }
+      return {
+        canRewind: r.canRewind,
+        fileCount: r.filesChanged?.length ?? 0,
+        reason: r.error,
+      }
+    },
+  )
+
+  /**
+   * 从某条消息分支出去,可选同时把文件回退到那一刻。
+   * 只 fork 对话不回退磁盘 = 上下文和硬盘不一致,之后 Edit 会报错(坑 4.2)。
+   */
+  ipcMain.handle(
+    'sessions:forkFrom',
+    async (_e, sessionId: string, messageId: string, rewind: boolean, title?: string) => {
+      if (rewind) await active?.rewindFiles(messageId)
+      const config = getConfig()
+      const result = await forkSession(sessionId, {
+        dir: config.activeWorkspace ?? undefined,
+        upToMessageId: messageId,
+        title,
+      })
+      return result.sessionId
+    },
+  )
 
   ipcMain.handle('sessions:delete', (_e, sessionId: string) => {
     const config = getConfig()
@@ -290,6 +327,8 @@ function registerIpc(): void {
   ipcMain.handle('chat:plan', (_e, id: string, accepted: boolean) => {
     active?.answerPlan(id, accepted)
   })
+  ipcMain.handle('chat:stopTask', (_e, taskId: string) => active?.stopTask(taskId))
+  ipcMain.handle('chat:toBackground', () => active?.moveToBackground() ?? false)
   ipcMain.handle('chat:usage', () => active?.usage() ?? null)
   ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
 
