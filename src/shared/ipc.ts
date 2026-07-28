@@ -130,6 +130,54 @@ export interface UnknownDialogNotice {
 }
 
 /**
+ * Claude 反问你 —— 设计终稿 §13,对应 dialogKind `permission_ask_user_question`。
+ *
+ * ⚠️ 未经端到端验证。`AskUserQuestion` 工具在当前的 SDK 会话里不上场
+ * (见 CLAUDE.md),所以这条通道永远不会响。字段形状取自 CLI 二进制里
+ * 那份 payload 校验器,不是猜的;但没有真数据跑过。
+ * 只在真收到 dialog 时才渲染,因此对现有行为零影响。
+ */
+export interface AskOption {
+  label: string
+  description: string
+  preview?: string
+}
+
+export interface AskQuestion {
+  question: string
+  /** ≤12 字的短标签,既当进度也当左右键 */
+  header: string
+  options: AskOption[]
+  multiSelect: boolean
+}
+
+export interface AskCard {
+  id: string
+  questions: AskQuestion[]
+}
+
+/** 用户对一整套反问的作答。键是题干原文 —— 这是工具输出契约规定的。 */
+export interface AskAnswer {
+  /** 题干 → 选中的标签;多选用逗号分隔 */
+  answers: Record<string, string>
+  /** 一道都不选,直接说一段话 */
+  response?: string
+  /** 每题的补充说明 */
+  notes?: Record<string, string>
+}
+
+/**
+ * 计划卡 —— 设计终稿 §06,对应 dialogKind `permission_exit_plan_mode_v2`。
+ * 同样未经端到端验证,原因同上。
+ *
+ * 沙绿左条,和权限卡的陶土左条区分:一个在拦你,一个在等你满意。
+ */
+export interface PlanCard {
+  id: string
+  plan: string
+}
+
+/**
  * 斜杠命令。source 不是 SDK 给的 —— SlashCommand 没有来源字段,
  * 是主进程查项目的 .claude/commands 与 .claude/skills 标出来的(§15)。
  */
@@ -217,6 +265,10 @@ export type ChatEvent =
   | { type: 'permission'; requestId: string; toolName: string; target?: string }
   /** MCP 服务要你填一张表 · §14 */
   | { type: 'elicitation'; card: ElicitationCard }
+  /** Claude 反问你 · §13 */
+  | { type: 'ask'; card: AskCard }
+  /** Claude 提交计划请你点头 · §06 */
+  | { type: 'plan'; card: PlanCard }
   /** 收到不会画的 dialogKind,已回 cancelled · §06 兜底 */
   | { type: 'unknownDialog'; notice: UnknownDialogNotice }
   | { type: 'done' }

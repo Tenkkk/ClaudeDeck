@@ -1,8 +1,17 @@
 import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { credentialEnv } from './config.js'
+import {
+  askCardFromPayload,
+  askResult,
+  KIND_ASK,
+  KIND_PLAN,
+  planCardFromPayload,
+  SUPPORTED_DIALOG_KINDS,
+} from './dialogs.js'
 import { coerceValues, fieldsFromSchema } from './elicit.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
+  AskAnswer,
   ChatEvent,
   ContextUsage,
   EffortLevel,
@@ -68,6 +77,7 @@ export interface StartOptions {
 
 let permissionSeq = 0
 let elicitSeq = 0
+let dialogSeq = 0
 
 /**
  * 权限卡上要显示的那个参数。工具不同,最该被看见的东西也不同:
@@ -94,6 +104,8 @@ export class ChatSession {
   private toolRows = new Map<string, ToolRow>()
   /** 勾过「本次会话内不再问」的工具名。换会话即失效。 */
   private alwaysAllow = new Set<string>()
+  private pendingAsks = new Map<string, (v: AskAnswer | null) => void>()
+  private pendingPlans = new Map<string, (accepted: boolean) => void>()
   private pendingElicitations = new Map<
     string,
     {
@@ -153,10 +165,44 @@ export class ChatSession {
           return { action: 'accept', content: coerceValues(fields, answer) }
         },
 
-        // 兜底 · 坑 4.3:dialogKind 是开放字符串,payload 按 kind 各自定义。
-        // 我们没有任何一种的可验证契约,所以一律回 cancelled 并在界面上
-        // 低调说明 —— 猜错的选择会真的落到文件上。
+        // 只声明我们真的会画的两种。没声明的 CLI 自己按默认处理,根本不问我们,
+        // 界面上不会出现半张残废的卡(坑 4.3 的「正门」)。
+        supportedDialogKinds: SUPPORTED_DIALOG_KINDS,
+
         onUserDialog: async (request) => {
+          // Claude 反问你 · §13
+          if (request.dialogKind === KIND_ASK) {
+            const id = `ask-${++dialogSeq}`
+            const card = askCardFromPayload(id, request.payload)
+            if (card) {
+              const answer = await new Promise<AskAnswer | null>((resolve) => {
+                this.pendingAsks.set(id, resolve)
+                this.emit({ type: 'ask', card })
+              })
+              return answer
+                ? { behavior: 'completed', result: askResult(card, answer) }
+                : { behavior: 'cancelled' }
+            }
+          }
+
+          // 计划卡 · §06
+          if (request.dialogKind === KIND_PLAN) {
+            const id = `plan-${++dialogSeq}`
+            const card = planCardFromPayload(id, request.payload)
+            if (card) {
+              const accepted = await new Promise<boolean>((resolve) => {
+                this.pendingPlans.set(id, resolve)
+                this.emit({ type: 'plan', card })
+              })
+              return accepted
+                ? { behavior: 'completed', result: { behavior: 'allow' } }
+                : { behavior: 'cancelled' }
+            }
+          }
+
+          // 认不出形状(含未声明的 kind、以及声明了但 payload 变形的情况):
+          // 一律安全取消,并在界面上低调说明是哪个 kind。
+          // 宁可不画,也不猜着画一个框 —— 猜错的选择会真的落到文件上。
           this.emit({ type: 'unknownDialog', notice: { dialogKind: request.dialogKind } })
           return { behavior: 'cancelled' }
         },
@@ -260,6 +306,21 @@ export class ChatSession {
    * `remember` 对应卡片右下角的「本次会话内不再问 X」。只在允许时有意义,
    * 且只作用于当前这个 ChatSession —— 换会话就重新问。
    */
+  /** `answer` 为 null 表示用户放弃作答。 */
+  answerAsk(id: string, answer: AskAnswer | null): void {
+    const resolve = this.pendingAsks.get(id)
+    if (!resolve) return
+    this.pendingAsks.delete(id)
+    resolve(answer)
+  }
+
+  answerPlan(id: string, accepted: boolean): void {
+    const resolve = this.pendingPlans.get(id)
+    if (!resolve) return
+    this.pendingPlans.delete(id)
+    resolve(accepted)
+  }
+
   /** `values` 为 null 表示用户取消了这张表。 */
   answerElicitation(id: string, values: Record<string, string | boolean> | null): void {
     const pending = this.pendingElicitations.get(id)
@@ -348,6 +409,10 @@ export class ChatSession {
     this.pendingPermissions.clear()
     for (const p of this.pendingElicitations.values()) p.resolve(null)
     this.pendingElicitations.clear()
+    for (const r of this.pendingAsks.values()) r(null)
+    this.pendingAsks.clear()
+    for (const r of this.pendingPlans.values()) r(false)
+    this.pendingPlans.clear()
     this.inbox.close()
     this.q = null
   }

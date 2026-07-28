@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import AskCard from './components/AskCard.js'
 import CommandPalette, { flatten } from './components/CommandPalette.js'
 import ControlBar from './components/ControlBar.js'
 import ElicitationCard from './components/ElicitationCard.js'
 import { FolderIcon } from './components/Icons.js'
 import Message from './components/Message.js'
+import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
 import ToolRow from './components/ToolRow.js'
@@ -15,7 +17,9 @@ import {
   type ChatEvent,
   type ContextUsage,
   type DoctorReport,
+  type AskCard as AskCardData,
   type ElicitationCard as ElicitationCardData,
+  type PlanCard as PlanCardData,
   type EffortLevel,
   type ModelOption,
   type PermissionMode,
@@ -72,6 +76,8 @@ export default function App(): React.JSX.Element {
   const [permission, setPermission] = useState<PendingPermission | null>(null)
   const [elicitation, setElicitation] = useState<ElicitationCardData | null>(null)
   const [unknownDialog, setUnknownDialog] = useState<string | null>(null)
+  const [ask, setAsk] = useState<AskCardData | null>(null)
+  const [plan, setPlan] = useState<PlanCardData | null>(null)
   const [menu, setMenu] = useState<{
     session: SessionListItem
     at: { x: number; y: number }
@@ -131,6 +137,10 @@ export default function App(): React.JSX.Element {
         setTranscript((t) => replaceTool(t, event.row))
       } else if (event.type === 'elicitation') {
         setElicitation(event.card)
+      } else if (event.type === 'ask') {
+        setAsk(event.card)
+      } else if (event.type === 'plan') {
+        setPlan(event.card)
       } else if (event.type === 'unknownDialog') {
         setUnknownDialog(event.notice.dialogKind)
       } else if (event.type === 'permission') {
@@ -381,6 +391,34 @@ export default function App(): React.JSX.Element {
               onCancel={() => {
                 void window.api.chat.respondElicitation(elicitation.id, null)
                 setElicitation(null)
+              }}
+            />
+          )}
+
+          {ask && (
+            <AskCard
+              card={ask}
+              onSubmit={(answer) => {
+                void window.api.chat.respondAsk(ask.id, answer)
+                setAsk(null)
+              }}
+              onCancel={() => {
+                void window.api.chat.respondAsk(ask.id, null)
+                setAsk(null)
+              }}
+            />
+          )}
+
+          {plan && (
+            <PlanCard
+              card={plan}
+              onAccept={() => {
+                void window.api.chat.respondPlan(plan.id, true)
+                setPlan(null)
+              }}
+              onDiscuss={() => {
+                void window.api.chat.respondPlan(plan.id, false)
+                setPlan(null)
               }}
             />
           )}

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppConfig,
+  AskAnswer,
   ChatEvent,
   ContextUsage,
   DoctorReport,
@@ -63,6 +64,10 @@ const api = {
       id: string,
       values: Record<string, string | boolean> | null,
     ): Promise<void> => ipcRenderer.invoke('chat:elicitation', id, values),
+    respondAsk: (id: string, answer: AskAnswer | null): Promise<void> =>
+      ipcRenderer.invoke('chat:ask', id, answer),
+    respondPlan: (id: string, accepted: boolean): Promise<void> =>
+      ipcRenderer.invoke('chat:plan', id, accepted),
     usage: (): Promise<UsageInfo | null> => ipcRenderer.invoke('chat:usage'),
     context: (): Promise<ContextUsage | null> => ipcRenderer.invoke('chat:context'),
     interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),

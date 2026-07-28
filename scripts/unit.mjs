@@ -9,6 +9,7 @@
 import { truncatePath, relativeTime } from '../src/renderer/src/lib/path.ts'
 import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
 import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
+import { askCardFromPayload, askResult, planCardFromPayload } from '../src/main/dialogs.ts'
 
 let passed = 0
 let failed = 0
@@ -194,6 +195,70 @@ console.log('\nelicit —— MCP 表单的 schema 映射 §14')
   eq('number 还原成数字', content.timeout, 45000)
   eq('空串不回传', 'grep' in content, false)
   eq('没填的字段不回传', 'weird' in content, false)
+}
+
+console.log('\ndialogs —— user dialog 的 payload 归一化 §13 / §06')
+{
+  // 形状取自 CLI 二进制里那份 payload 校验器
+  const askPayload = {
+    requestId: 'r1',
+    toolName: 'AskUserQuestion',
+    permissionResult: { behavior: 'ask' },
+    questions: [
+      {
+        question: '新 query 建不起来的时候,应该怎么处理?',
+        header: '切换失败',
+        multiSelect: false,
+        options: [
+          { label: '保留旧 query', description: '对话不中断。', preview: '<b>预览</b>' },
+          { label: '直接报错', description: '不留着失效连接。' },
+        ],
+      },
+      {
+        question: '这次要顺手做掉哪几件?',
+        header: '改动范围',
+        multiSelect: true,
+        options: [
+          { label: '补一条 typecheck', description: '' },
+          { label: '更新 CLAUDE.md', description: '' },
+        ],
+      },
+    ],
+  }
+
+  const card = askCardFromPayload('a1', askPayload)
+  eq('两道题都认出来', card?.questions.length, 2)
+  eq('保留 header', card?.questions[0].header, '切换失败')
+  eq('保留 multiSelect', card?.questions[1].multiSelect, true)
+  eq('保留 preview', card?.questions[0].options[0].preview, '<b>预览</b>')
+  eq('缺 description 补空串', card?.questions[1].options[0].description, '')
+
+  // 作答按题干原文回填 —— 这是工具的输出契约
+  const result = askResult(card, {
+    answers: {
+      '新 query 建不起来的时候,应该怎么处理?': '直接报错',
+      '这次要顺手做掉哪几件?': '补一条 typecheck, 更新 CLAUDE.md',
+    },
+    notes: { '切换失败': '' },
+  })
+  eq('answers 键是题干原文', result.answers['直接报错'] === undefined, true)
+  eq('单选作答', result.answers['新 query 建不起来的时候,应该怎么处理?'], '直接报错')
+  eq('多选逗号分隔', result.answers['这次要顺手做掉哪几件?'], '补一条 typecheck, 更新 CLAUDE.md')
+  eq('空 note 不回传', result.annotations, undefined)
+
+  const freeform = askResult(card, { answers: {}, response: '四道题都不合适' })
+  eq('自由作答走 response', freeform.response, '四道题都不合适')
+
+  // 认不出形状一律返回 null,交给「安全取消」—— 宁可不画也不猜着画
+  eq('questions 不是数组 → null', askCardFromPayload('x', { questions: 'nope' }), null)
+  eq('questions 为空 → null', askCardFromPayload('x', { questions: [] }), null)
+  eq('题目缺选项 → null', askCardFromPayload('x', { questions: [{ question: 'q', options: [] }] }), null)
+  eq('payload 为 null → null', askCardFromPayload('x', null), null)
+
+  // 计划卡
+  eq('计划取 plan 字段', planCardFromPayload('p1', { plan: '1. 先做 A\n2. 再做 B' })?.plan.length > 0, true)
+  eq('缺 plan → null', planCardFromPayload('p1', { requestId: 'r' }), null)
+  eq('plan 是空串 → null', planCardFromPayload('p1', { plan: '   ' }), null)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

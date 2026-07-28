@@ -10,6 +10,7 @@
   (删除是真删 Claude Code 的会话记录,因此有二次确认)
 - 斜杠命令面板:命令列表由 SDK 运行时提供,按「内置 / 项目命令 / Skill」分组
 - MCP 服务的表单与授权卡(`onElicitation`),按 JSON Schema 通用渲染
+- 「Claude 反问你」分步卡与计划卡(见下方已知限制)
 - 对话区的四种工具行:Read / Bash / Edit(带 diff)/ TodoWrite
 - 控件条三个弹层:权限四档、模型、努力程度五档停靠轨
 - 侧栏按「项目 → 会话」两层分组,支持多个工作目录并列
@@ -18,9 +19,10 @@
 
 ### 已知限制
 
-- `AskUserQuestion` 与 `ExitPlanMode` 不对 Agent SDK 会话开放,
-  因此相关界面暂未实现;收到无法渲染的对话框时一律安全取消并提示。
-  详见 [CLAUDE.md](CLAUDE.md)。
+- `AskUserQuestion` 与 `ExitPlanMode` 目前不出现在 Agent SDK 会话的工具列表里,
+  所以「Claude 反问你」与「计划卡」两张卡虽然已经实现,但触发不到,
+  也因此**未经端到端验证**。收到无法识别的对话框时一律安全取消并提示。
+  已试过的配置与实证契约见 [CLAUDE.md](CLAUDE.md)。
 - 仅支持 Windows。
 - 尚未实现:`.claude` 配置读写中栏、子进程面板、文件回退、深色主题、跨会话搜索。
 

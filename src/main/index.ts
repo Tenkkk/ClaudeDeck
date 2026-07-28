@@ -23,6 +23,7 @@ import { installCli, runDoctor } from './doctor.js'
 import { annotateSources } from './commands.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
+  AskAnswer,
   ChatEvent,
   EffortLevel,
   PermissionMode,
@@ -262,6 +263,12 @@ function registerIpc(): void {
       active?.answerElicitation(id, values)
     },
   )
+  ipcMain.handle('chat:ask', (_e, id: string, answer: AskAnswer | null) => {
+    active?.answerAsk(id, answer)
+  })
+  ipcMain.handle('chat:plan', (_e, id: string, accepted: boolean) => {
+    active?.answerPlan(id, accepted)
+  })
   ipcMain.handle('chat:usage', () => active?.usage() ?? null)
   ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
 

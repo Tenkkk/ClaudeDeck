@@ -24,16 +24,40 @@
 7. **API Key 只走 `safeStorage`。** 任何时候都不要把明文 key 写进文件或日志,
    也不要经 IPC 传给渲染层。
 
-## SDK 会话里拿不到的东西(实测,别再试)
+## AskUserQuestion 与 ExitPlanMode:界面已就位,但通道不会响
 
-`AskUserQuestion` 与 `ExitPlanMode` **不对 Agent SDK 会话开放**。三条证据:
+**已试过且无效的路子**(别重复):
 
-1. Claude 自报可用工具列表里没有
-2. 写进 `options.tools` 也不暴露
-3. 直接调用返回 `ExitPlanMode exists but is not enabled in this context`
+| 试法 | 结果 |
+|---|---|
+| 默认配置 | Claude 自报工具列表里没有这两个 |
+| 写进 `options.tools` | 被静默丢弃 |
+| `settingSources: []` 隔离 + `permissionMode: 'plan'` | ExitPlanMode 仍不暴露 |
+| 直接调用 | `ExitPlanMode exists but is not enabled in this context` |
+| `betas` | 只有 `context-1m`,无关 |
+| `Settings` 里的键 | 有 `askUserQuestionTimeout`、`showClearContextOnPlanAccept`,但没有启用开关 |
+| `get_plan` | 只是内部控制请求类型,`Query` 上没有对应方法 |
 
-所以设计终稿 §13(AskUserQuestion 全套)和 §06 的计划卡**做不出来**。
-类型在 `sdk-tools.d.ts` 里,但工具不开放。等 SDK 放开再说。
+**准确的说法是「我没找到那个开关」,不是「不可能」。** 开关大概率在 CLI 侧,
+二进制是 265MB 压缩产物,继续挖性价比很低。
+
+**但界面已经做好了**(`AskCard` / `PlanCard` + `main/dialogs.ts`),
+按下面这份实证契约实现:
+
+```
+{kind:"permission_ask_user_question",
+ payload 必含 requestId / toolName / permissionResult / questions}
+{kind:"permission_exit_plan_mode_v2",
+ payload 必含 requestId / toolName / permissionResult / plan}
+外层返回 {behavior:'completed', result} 或 {behavior:'cancelled'}
+```
+
+这份契约是从 CLI 二进制里那套 payload 校验器读出来的,不是猜的。
+卡片只在真收到对应 dialog 时渲染 —— 现在收不到,所以**对现有行为零影响**;
+哪天 SDK 放开就自动生效。
+
+⚠️ **未经端到端验证**,只做过静态渲染与 payload 归一化的单测。
+认不出形状时一律回 `{ behavior: 'cancelled' }`。
 
 `askUserQuestionTimeout` 属于 `Settings`(`.claude/settings.json`),
 不是 `Options` —— 写进 query options 编译不过。

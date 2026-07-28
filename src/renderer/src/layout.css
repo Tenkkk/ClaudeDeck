@@ -1395,6 +1395,169 @@ button.todo-box {
   white-space: nowrap;
 }
 
+/* ---- Claude 反问你 · §13 ---- */
+
+/* 那排标签既当进度也当鼠标版的左右键 */
+.ask-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s6);
+  margin-bottom: var(--s4);
+}
+
+.ask-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 2px var(--s8);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  background: transparent;
+}
+
+.ask-step.done {
+  color: var(--live);
+  border-color: var(--live);
+}
+
+/* 当前题描边用 --focus,那是 token 表给这件事定的颜色 */
+.ask-step.current {
+  color: var(--ink);
+  border-color: var(--focus);
+  background: var(--accent-tint);
+}
+
+.ask-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--muted-2);
+}
+
+.ask-split {
+  display: grid;
+  grid-template-columns: 1fr 240px;
+  gap: var(--s16);
+  align-items: start;
+}
+
+.ask-options {
+  display: grid;
+  gap: 2px;
+}
+
+.ask-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s8);
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--r-inline);
+  padding: var(--s8) var(--s12);
+}
+
+.ask-option:hover {
+  background: var(--bg);
+}
+
+.ask-option.current {
+  background: var(--accent-tint);
+  border-color: var(--focus);
+}
+
+/* 单选是圆点,多选复用勾选框 —— 未选中时也必须看得见 */
+.ask-radio {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 1.3px solid var(--mark);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.ask-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.ask-other,
+.ask-note {
+  width: 100%;
+  margin-top: var(--s6);
+}
+
+.ask-freeform {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+}
+
+.ask-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--bg);
+  padding: var(--s8) 0 var(--s12);
+}
+
+.ask-preview-body {
+  padding: 0 var(--s12);
+  font-size: var(--text-ui-s);
+  color: var(--ink-2);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+/* ---- 计划卡 · §06 ----
+   沙绿左条,和权限卡的陶土左条区分:一个在拦你,一个在等你满意 */
+
+.plan-card {
+  width: 100%;
+  max-width: var(--w-prose);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--live);
+  border-radius: var(--r-popover);
+  padding: var(--s16);
+  display: grid;
+  gap: var(--s8);
+}
+
+.plan-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+}
+
+.card-label.live {
+  color: var(--live);
+}
+
+.plan-steps {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--muted);
+}
+
+/* 计划是 Claude 写的散文,不是日志 —— 用正文字体 */
+.plan-body {
+  font-family: var(--font-prose);
+  font-size: var(--text-prose);
+  line-height: var(--leading-prose);
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
 /* §06 兜底提示:低调一行,不做成错误 */
 .notice {
   width: 100%;
