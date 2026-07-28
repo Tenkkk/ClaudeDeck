@@ -129,7 +129,32 @@ export interface McpServer {
   /** 配置来源:project / user / local / claudeai / managed */
   scope?: string
   error?: string
-  toolCount: number
+  tools: McpTool[]
+}
+
+export interface McpTool {
+  name: string
+  description?: string
+  /** 只读的工具批准起来心里有底,值得单独标出来 */
+  readOnly?: boolean
+  destructive?: boolean
+}
+
+/** 本会话可用的子 Agent —— 原生 `/agents` 列的就是这些 */
+export interface AgentInfo {
+  name: string
+  description: string
+  /** 不写就跟随主对话的模型 */
+  model?: string
+}
+
+/** 当前登录的账号。原生 `/status` 里的那几行 */
+export interface AccountInfo {
+  email?: string
+  organization?: string
+  subscriptionType?: string
+  /** firstParty 才是 Anthropic 登录;其余是 Bedrock / Vertex 等外部鉴权 */
+  apiProvider?: string
 }
 
 export interface Versions {
@@ -354,8 +379,12 @@ export type TranscriptItem =
   | { kind: 'tool'; row: ToolRow }
   /** Claude 回答之前的思考。默认折叠 —— 想看的时候才看 */
   | { kind: 'thinking'; text: string }
-  /** `/mcp` 的结果。留在对话流里 —— 你跑了一条命令,就该看见它的回执 */
-  | { kind: 'mcp'; servers: McpServer[] }
+  /**
+   * `/mcp` 与 `/agents` 的面板。**只是个占位,不带数据** ——
+   * 面板自己去取、自己刷新,否则点了「重连」之后画面还停在旧状态上。
+   */
+  | { kind: 'mcp' }
+  | { kind: 'agents' }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
 /** 与 SDK 的 SDKStatus 一致 —— 不自己另立一套状态机 */

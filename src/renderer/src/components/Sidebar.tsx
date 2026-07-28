@@ -8,6 +8,7 @@ import {
   type ClaudeEntry,
   type SessionListItem,
   type ThemePref,
+  type AccountInfo,
   type UsageInfo,
   type Versions,
 } from '../../../shared/ipc.js'
@@ -26,6 +27,7 @@ export default function Sidebar({
   activeWorkspace,
   activeSession,
   usage,
+  account,
   versions,
   expandedAll,
   onNewSession,
@@ -49,6 +51,7 @@ export default function Sidebar({
   activeWorkspace: string | null
   activeSession: string | null
   usage: UsageInfo | null
+  account: AccountInfo | null
   versions: Versions | null
   expandedAll: Record<string, boolean>
   onNewSession: () => void
@@ -294,6 +297,22 @@ export default function Sidebar({
                 </span>
               </button>
             ))}
+            {/* 账号:原生 /status 里就有这几行。三方 provider 下多数字段是空的,
+                那就少画几行,不写「未知」 */}
+            {account && (account.email || account.subscriptionType || account.organization) && (
+              <>
+                <div className="ctx-sep" />
+                <div className="pop-group">账号</div>
+                {account.email && <div className="about-row">{account.email}</div>}
+                {account.organization && <div className="about-row">{account.organization}</div>}
+                {account.subscriptionType && (
+                  <div className="about-row">{account.subscriptionType}</div>
+                )}
+                {account.apiProvider && account.apiProvider !== 'firstParty' && (
+                  <div className="about-row">{account.apiProvider}</div>
+                )}
+              </>
+            )}
             <div className="ctx-sep" />
             <div className="about-row">
               ClaudeDeck {versions?.app ?? '—'}

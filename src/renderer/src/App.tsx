@@ -11,6 +11,7 @@ import PlanCard from './components/PlanCard.js'
 import SessionMenu from './components/SessionMenu.js'
 import Sidebar from './components/Sidebar.js'
 import Markdown from './components/Markdown.js'
+import AgentsPanel from './components/AgentsPanel.js'
 import McpPanel from './components/McpPanel.js'
 import Resizer from './components/Resizer.js'
 import { clampMidcol, clampSidebar, loadWidths, saveWidths } from './lib/columns.js'
@@ -22,6 +23,7 @@ import Onboarding from './screens/Onboarding.js'
 import ProjectPicker from './screens/ProjectPicker.js'
 import {
   EFFORT_LEVELS,
+  type AccountInfo,
   type AppConfig,
   type ChatEvent,
   type ContextUsage,
@@ -67,6 +69,16 @@ const UI_COMMANDS: Record<string, 'model' | 'effort'> = {
 }
 
 /**
+ * 同样由界面接管,但结果是一块面板、留在对话流里 —— 你跑了一条命令,
+ * 就该看见它的回执。占位不带数据:面板自己取、自己刷,否则点完「重连」
+ * 画面还停在旧状态上。
+ */
+const PANEL_COMMANDS: Record<string, 'mcp' | 'agents'> = {
+  '/mcp': 'mcp',
+  '/agents': 'agents',
+}
+
+/**
  * §06:Claude 会反复写 TodoWrite,同一次会话里只保留一张卡、原地更新,
  * 否则十几张待办卡会把对话冲掉。去重放在组装这一层。
  */
@@ -98,6 +110,7 @@ export default function App(): React.JSX.Element {
   const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [context, setContext] = useState<ContextUsage | null>(null)
   const [versions, setVersions] = useState<Versions | null>(null)
+  const [account, setAccount] = useState<AccountInfo | null>(null)
   const [permission, setPermission] = useState<PendingPermission | null>(null)
   const [elicitation, setElicitation] = useState<ElicitationCardData | null>(null)
   const [unknownDialog, setUnknownDialog] = useState<string | null>(null)
@@ -276,6 +289,7 @@ export default function App(): React.JSX.Element {
     void refreshSessions()
     void window.api.chat.open().then(async () => {
       setModels(await window.api.chat.models())
+      setAccount(await window.api.chat.account())
       setCommands(await window.api.chat.commands())
       await refreshMeters()
     })
@@ -372,10 +386,10 @@ export default function App(): React.JSX.Element {
 
     // /mcp 的数据 SDK 直接给,不必把命令发出去换一段降级文本回来。
     // 结果留在对话流里 —— 你跑了一条命令,就该看见它的回执。
-    if (text.toLowerCase() === '/mcp') {
+    const panel = PANEL_COMMANDS[text.toLowerCase()]
+    if (panel) {
       setDraft('')
-      const servers = await window.api.chat.mcp()
-      setTranscript((t) => [...t, { kind: 'mcp', servers }])
+      setTranscript((t) => [...t, { kind: panel }])
       return
     }
 
@@ -511,6 +525,7 @@ export default function App(): React.JSX.Element {
         activeWorkspace={config?.activeWorkspace ?? null}
         activeSession={activeSession}
         usage={usage}
+        account={account}
         versions={versions}
         expandedAll={expandedAll}
         onNewSession={() => void newSession()}
@@ -602,15 +617,9 @@ export default function App(): React.JSX.Element {
             ) : item.kind === 'thinking' ? (
               <Thought key={i} text={item.text} />
             ) : item.kind === 'mcp' ? (
-              <McpPanel
-                key={i}
-                servers={item.servers}
-                onReconnect={(name) => {
-                  // 没有公开的重连方法,但 CLI 自己提示可以这么发 —— 走它的路
-                  setDraft(`/mcp reconnect ${name}`)
-                  composerRef.current?.focus()
-                }}
-              />
+              <McpPanel key={i} />
+            ) : item.kind === 'agents' ? (
+              <AgentsPanel key={i} />
             ) : (
               <Message
                 key={i}

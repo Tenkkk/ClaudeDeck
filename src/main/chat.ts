@@ -15,6 +15,8 @@ import type {
   ContextUsage,
   EffortLevel,
   ElicitationField,
+  AccountInfo,
+  AgentInfo,
   McpServer,
   PermissionMode,
   ToolRow,
@@ -461,11 +463,62 @@ export class ChatSession {
         status: s.status,
         scope: s.scope,
         error: s.error,
-        toolCount: s.tools?.length ?? 0,
+        tools: (s.tools ?? []).map((t) => ({
+          name: t.name,
+          description: t.description,
+          readOnly: t.annotations?.readOnly,
+          destructive: t.annotations?.destructive,
+        })),
       }))
     } catch {
-      // 拿不到就当没有 —— 这一条不该把整个界面拖down
+      // 拿不到就当没有 —— 这一条不该把整个界面拖垮
       return []
+    }
+  }
+
+  /** 重连与启停都是 SDK 的公开方法,失败会抛,原样把话带回界面 */
+  async mcpReconnect(name: string): Promise<string | null> {
+    try {
+      await this.q?.reconnectMcpServer(name)
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  async mcpToggle(name: string, enabled: boolean): Promise<string | null> {
+    try {
+      await this.q?.toggleMcpServer(name, enabled)
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+
+  /** 本会话可用的子 Agent —— 原生 `/agents` */
+  async agents(): Promise<AgentInfo[]> {
+    if (!this.q) return []
+    try {
+      const list = await this.q.supportedAgents()
+      return list.map((a) => ({ name: a.name, description: a.description, model: a.model }))
+    } catch {
+      return []
+    }
+  }
+
+  /** 当前登录的账号。三方 provider 下多数字段是空的,界面照实少画几行 */
+  async account(): Promise<AccountInfo | null> {
+    if (!this.q) return null
+    try {
+      const a = await this.q.accountInfo()
+      return {
+        email: a.email,
+        organization: a.organization,
+        subscriptionType: a.subscriptionType,
+        apiProvider: a.apiProvider,
+      }
+    } catch {
+      return null
     }
   }
 

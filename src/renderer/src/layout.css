@@ -1697,8 +1697,113 @@ kbd,
   word-break: break-word;
 }
 
+/* 一行里左半边是可点开的主体,右半边是动作 —— 分开才不会「想展开却按到停用」 */
+.mcp-main {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.mcp-main:disabled {
+  cursor: default;
+}
+
+.mcp-caret {
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+  color: var(--muted-2);
+}
+
+.mcp-caret.open {
+  transform: rotate(0deg);
+}
+
+/* 没有工具可看的服务不画箭头,但要占住同样的宽度,否则整列名字会错位 */
+.mcp-caret-space {
+  flex: none;
+  width: 11px;
+}
+
+.mcp-actions {
+  display: flex;
+  gap: var(--s6);
+  flex: none;
+}
+
+.mcp-tool-list {
+  margin: var(--s4) 0 var(--s8) 26px;
+  padding-left: var(--s12);
+  border-left: 1px solid var(--border);
+}
+
+.mcp-tool {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+  padding: var(--s2) 0;
+  font-size: var(--fs-sm);
+}
+
+.mcp-tool-name {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-s);
+  color: var(--ink-2);
+}
+
+.mcp-tool-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-2);
+}
+
+.mcp-tag {
+  flex: none;
+  padding: 0 var(--s6);
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.mcp-tag.bad {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* ---- 子 Agent ---- */
+
+.agent-row {
+  padding: var(--s6) 0;
+}
+
+.agent-row + .agent-row {
+  border-top: 1px solid var(--border);
+}
+
+.agent-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s8);
+}
+
+.agent-desc {
+  margin-top: var(--s2);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .mcp-action {
-  margin-left: auto;
   flex: none;
   border: 1px solid var(--border);
   background: transparent;

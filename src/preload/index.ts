@@ -5,6 +5,8 @@ import type {
   ChatEvent,
   ClaudeEntry,
   ContextUsage,
+  AccountInfo,
+  AgentInfo,
   McpServer,
   DoctorReport,
   EffortLevel,
@@ -94,6 +96,12 @@ const api = {
     usage: (): Promise<UsageInfo | null> => ipcRenderer.invoke('chat:usage'),
     context: (): Promise<ContextUsage | null> => ipcRenderer.invoke('chat:context'),
     mcp: (): Promise<McpServer[]> => ipcRenderer.invoke('chat:mcp'),
+    mcpReconnect: (name: string): Promise<string | null> =>
+      ipcRenderer.invoke('chat:mcpReconnect', name),
+    mcpToggle: (name: string, enabled: boolean): Promise<string | null> =>
+      ipcRenderer.invoke('chat:mcpToggle', name, enabled),
+    agents: (): Promise<AgentInfo[]> => ipcRenderer.invoke('chat:agents'),
+    account: (): Promise<AccountInfo | null> => ipcRenderer.invoke('chat:account'),
     interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),
     setModel: (model: string): Promise<void> => ipcRenderer.invoke('chat:setModel', model),
     setEffort: (effort: EffortLevel): Promise<void> => ipcRenderer.invoke('chat:setEffort', effort),

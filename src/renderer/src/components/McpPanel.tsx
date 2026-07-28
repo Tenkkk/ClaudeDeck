@@ -1,16 +1,16 @@
+import { useCallback, useEffect, useState } from 'react'
+import { CaretIcon } from './Icons.js'
 import type { McpServer } from '../../../shared/ipc.js'
 
 /**
- * `/mcp` 的结果面板。
+ * `/mcp` 的服务面板 —— 可以点进去。
  *
- * 之前这条命令是把文本发给 CLI、拿回一段纯文本 —— 那是 CLI 给 SDK 宿主的
- * **降级回复**,它自己在末尾就写着「详情请去终端看」。把降级回复当成功能,
- * 等于把「我没做」包装成「做了」。
+ * 原生的 `/mcp` 是能按回车进某个服务、看它的工具、启停、重连的。SDK 把这些
+ * 全给了:`mcpServerStatus()` 返回每个服务的 `tools[]`(带只读 / 破坏性标注),
+ * `reconnectMcpServer` 和 `toggleMcpServer` 是公开方法。
  *
- * 现在数据来自 `mcpServerStatus()`:名字、状态、失败原因、来源、工具数,
- * SDK 全都给了。
- *
- * 状态标记不用 emoji —— 打包的四套拉丁字体没有那些字形,靠系统回落会出豆腐块。
+ * **数据由这个组件自己取、自己刷。** 放在 transcript 里当静态数据的话,
+ * 点完「重连」画面还停在旧状态上 —— 那种「按钮点了像没点」的感觉比不做还糟。
  */
 const STATUS: Record<McpServer['status'], { label: string; tone: string }> = {
   connected: { label: '已连接', tone: 'ok' },
@@ -29,13 +29,42 @@ const SCOPE: Record<string, string> = {
   managed: '受管',
 }
 
-export default function McpPanel({
-  servers,
-  onReconnect,
-}: {
-  servers: McpServer[]
-  onReconnect: (name: string) => void
-}): React.JSX.Element {
+export default function McpPanel(): React.JSX.Element {
+  const [servers, setServers] = useState<McpServer[] | null>(null)
+  const [open, setOpen] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setServers(await window.api.chat.mcp())
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  /** 动作跑完必须重新取一次状态 —— 否则界面还是旧的 */
+  const act = useCallback(
+    async (name: string, run: () => Promise<string | null>) => {
+      setBusy(name)
+      setError(null)
+      const err = await run()
+      if (err) setError(`${name}:${err}`)
+      await load()
+      setBusy(null)
+    },
+    [load],
+  )
+
+  if (servers === null) {
+    return (
+      <div className="mcp-panel">
+        <div className="card-label">MCP 服务</div>
+        <div className="hint">正在读取…</div>
+      </div>
+    )
+  }
+
   if (servers.length === 0) {
     return (
       <div className="mcp-panel">
@@ -45,7 +74,6 @@ export default function McpPanel({
     )
   }
 
-  // 按来源分组,组内保持 SDK 给的顺序
   const scopes = [...new Set(servers.map((s) => s.scope ?? '其他'))]
   const connected = servers.filter((s) => s.status === 'connected').length
 
@@ -58,6 +86,8 @@ export default function McpPanel({
         </span>
       </div>
 
+      {error && <div className="mcp-error">{error}</div>}
+
       {scopes.map((scope) => (
         <div key={scope} className="mcp-group">
           <div className="pop-group">{SCOPE[scope] ?? scope}</div>
@@ -65,21 +95,72 @@ export default function McpPanel({
             .filter((s) => (s.scope ?? '其他') === scope)
             .map((s) => {
               const st = STATUS[s.status]
+              const expanded = open === s.name
+              const canOpen = s.tools.length > 0
               return (
-                <div key={s.name} className="mcp-row">
-                  <span className={`mcp-dot ${st.tone}`} />
-                  <span className="mcp-name">{s.name}</span>
-                  <span className={`mcp-status ${st.tone}`}>{st.label}</span>
-                  {s.status === 'connected' && (
-                    <span className="mcp-tools">{s.toolCount} 个工具</span>
-                  )}
-                  {/* 连不上才给重连 —— 好着的服务不需要这颗按钮 */}
-                  {(s.status === 'failed' || s.status === 'needs-auth') && (
-                    <button className="mcp-action" onClick={() => onReconnect(s.name)}>
-                      重连
+                <div key={s.name} className={`mcp-item${expanded ? ' open' : ''}`}>
+                  <div className="mcp-row">
+                    <button
+                      className="mcp-main"
+                      disabled={!canOpen}
+                      aria-expanded={expanded}
+                      onClick={() => setOpen(expanded ? null : s.name)}
+                    >
+                      {/* 没有工具可看的服务不给箭头 —— 免得点了没反应 */}
+                      {canOpen ? (
+                        <CaretIcon size={11} className={expanded ? 'mcp-caret open' : 'mcp-caret'} />
+                      ) : (
+                        <span className="mcp-caret-space" />
+                      )}
+                      <span className={`mcp-dot ${st.tone}`} />
+                      <span className="mcp-name">{s.name}</span>
+                      <span className={`mcp-status ${st.tone}`}>{st.label}</span>
+                      {s.tools.length > 0 && (
+                        <span className="mcp-tools">{s.tools.length} 个工具</span>
+                      )}
                     </button>
-                  )}
+
+                    <span className="mcp-actions">
+                      {(s.status === 'failed' || s.status === 'needs-auth') && (
+                        <button
+                          className="mcp-action"
+                          disabled={busy === s.name}
+                          onClick={() => void act(s.name, () => window.api.chat.mcpReconnect(s.name))}
+                        >
+                          {busy === s.name ? '…' : '重连'}
+                        </button>
+                      )}
+                      <button
+                        className="mcp-action"
+                        disabled={busy === s.name}
+                        onClick={() =>
+                          void act(s.name, () =>
+                            window.api.chat.mcpToggle(s.name, s.status === 'disabled'),
+                          )
+                        }
+                      >
+                        {s.status === 'disabled' ? '启用' : '停用'}
+                      </button>
+                    </span>
+                  </div>
+
                   {s.error && <div className="mcp-error">{s.error}</div>}
+
+                  {expanded && (
+                    <div className="mcp-tool-list">
+                      {s.tools.map((t) => (
+                        <div key={t.name} className="mcp-tool">
+                          <span className="mcp-tool-name">{t.name}</span>
+                          {/* 只读 / 破坏性是服务自己声明的标注,批准前值得看见 */}
+                          {t.readOnly && <span className="mcp-tag">只读</span>}
+                          {t.destructive && <span className="mcp-tag bad">有破坏性</span>}
+                          {t.description && (
+                            <span className="mcp-tool-desc">{firstLine(t.description)}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -87,4 +168,10 @@ export default function McpPanel({
       ))}
     </div>
   )
+}
+
+/** 工具描述常常是一整段,列表里只取第一句 */
+function firstLine(text: string): string {
+  const line = text.trim().split('\n')[0]
+  return line.length > 90 ? `${line.slice(0, 90)}…` : line
 }

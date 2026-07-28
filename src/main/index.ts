@@ -349,6 +349,12 @@ function registerIpc(): void {
   ipcMain.handle('chat:usage', () => active?.usage() ?? null)
   ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
   ipcMain.handle('chat:mcp', () => active?.mcpServers() ?? [])
+  ipcMain.handle('chat:mcpReconnect', (_e, name: string) => active?.mcpReconnect(name) ?? '会话未启动')
+  ipcMain.handle('chat:mcpToggle', (_e, name: string, enabled: boolean) =>
+    active?.mcpToggle(name, enabled) ?? '会话未启动',
+  )
+  ipcMain.handle('chat:agents', () => active?.agents() ?? [])
+  ipcMain.handle('chat:account', () => active?.account() ?? null)
 
   ipcMain.handle('app:versions', async (): Promise<Versions> => {
     const report = await runDoctor()

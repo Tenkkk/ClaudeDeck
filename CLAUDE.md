@@ -69,6 +69,54 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
 而且它安静得没有任何报错。`chat.ts` 里用 `streamedText` 标记本条消息有没有收到过
 增量,没有就在收尾时把整条补画上。
 
+## 写测试时的两个坑
+
+**`page.waitForFunction` 的签名是 `(fn, arg, options)`。** 只传两个参数的话,
+`{ timeout }` 会被当成**传给页面函数的实参**,超时悄悄退回默认的 30 秒。
+本仓库曾有十三处这么写,注释上写着 90 秒、实际一直是 30 秒,直到某次回答慢了
+才暴露。没有实参就显式写 `undefined` 占住那一位。
+
+**给了宽限的等待不叫断言。** 「一发消息侧栏就多出这条」曾经给了 30 秒超时 ——
+于是「等这一轮答完才出现」照样算通过,那条断言等于什么都没测。要测「及时」,
+超时就得卡在「及时」的量级上,并且再断言一次「此刻这一轮还没结束」。
+
+## SDK 能力清单:接了哪些,还欠哪些
+
+下面是 `query()` 返回的 **`Query` 对象的控制方法**(v0.3.220,共 27 个)。
+注意措辞:这不等于「Agent SDK 的全部能力」—— 顶层还有 `query()` / `tool()` /
+`createSdkMcpServer()` / 会话查询与管理那些,`Query` 本身还是个 AsyncGenerator。
+这些控制方法**都只在流式模式下受支持**,所以本项目一直用 `prompt: AsyncIterable`。
+
+**加新功能前先看这张表。** 界面上缺的东西,多半不是「SDK 没有」,
+而是「我没接」—— 这个项目已经在同一个坑里栽过好几次。
+
+| 方法 | 用在哪 |
+|---|---|
+| `supportedModels` | 模型弹层(含 description、supportedEffortLevels) |
+| `supportedCommands` | 斜杠命令面板 |
+| `supportedAgents` | `/agents` 面板 |
+| `mcpServerStatus` | `/mcp` 面板(含每个服务的 tools[]) |
+| `reconnectMcpServer` / `toggleMcpServer` | `/mcp` 面板上的重连、启停 |
+| `accountInfo` | 齿轮浮窗里的账号 |
+| `getContextUsage` | 上下文环与分类明细 |
+| `usage_EXPERIMENTAL_…` | 额度与本会话花费(实验性 API,名字就是警告) |
+| `setModel` / `setPermissionMode` | 控件条 |
+| `interrupt` | 停止按钮 |
+| `stopTask` / `backgroundTasks` | 子进程面板。注意 `backgroundTasks` 是**动作**(把前台任务转后台,对应终端的 Ctrl+B),不是「取任务列表」 |
+| `rewindFiles` | 分支时的文件回退 |
+| `close` | 切会话时收拾旧 query |
+
+**还没接的**(不是做不到,是还没做):
+
+| 方法 | 能做什么 |
+|---|---|
+| `readFile` | 按会话的权限规则读文件,可用于内置的文件查看 |
+| `reloadPlugins` / `reloadSkills` | 改完 `.claude/skills` 不必重开会话 |
+| `setMcpServers` / `setMcpPermissionModeOverride` | 会话内增删 MCP、单独收紧某个服务的权限 |
+| `initializationResult` | 一次拿齐命令 / 模型 / 账户,省掉几次往返 |
+| `reinitialize` / `applyFlagSettings` / `seedReadState` | 断连恢复、会话中途改配置、补读状态 |
+| `setMaxThinkingTokens` | **已弃用**,官方让改用 `options.thinking`——本项目走的就是后者,不要退回去 |
+
 ## 宿主回调只有三个
 
 | 回调 | 管什么 | 契约 |
