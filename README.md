@@ -197,5 +197,4 @@ npm run typecheck && npm run unit && npm run build
 
 ## License
 
-[MIT](LICENSE)。随包分发的字体为 SIL Open Font License 1.1,
-版权与许可证原文见 [src/renderer/src/fonts/LICENSES.md](src/renderer/src/fonts/LICENSES.md)。
+本项目以 [MIT](LICENSE) 发布。随包分发的第三方内容(字体等)见 [NOTICE](NOTICE.md)。
