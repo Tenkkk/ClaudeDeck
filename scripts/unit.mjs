@@ -11,6 +11,7 @@ import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
 import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
 import { askCardFromPayload, askResult, planCardFromPayload } from '../src/main/dialogs.ts'
 import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
+import { bundledExecutablePath } from '../src/main/binary.ts'
 
 let passed = 0
 let failed = 0
@@ -299,6 +300,22 @@ console.log('\nclaudedir —— JSON 写坏要在保存前拦住并指出行号'
 
   const empty = validateJson('')
   eq('空内容也算坏', empty !== null, true)
+}
+
+// ---- 自带 claude 可执行文件的路径 ------------------------------------------
+// e2e 跑的是 dev 构建,照不到这里 —— 装完打不开就是栽在这一段上。
+{
+  const win = bundledExecutablePath('C:\\app\\resources', 'win32', 'x64')
+  eq('指向 unpacked,不是 asar 内部', win.includes('app.asar.unpacked'), true)
+  eq('不留在 asar 里', /app\.asar[\\/]/.test(win), false)
+  eq('文件名带 .exe', win.endsWith('claude.exe'), true)
+  eq('包名带上平台与架构', win.includes('claude-agent-sdk-win32-x64'), true)
+
+  const mac = bundledExecutablePath('/app/resources', 'darwin', 'arm64')
+  // 分隔符由跑测试的这台机器决定(join 在 Windows 上吐反斜杠),
+  // 所以这里只看结尾的文件名,不挑分隔符
+  eq('非 Windows 不加 .exe', /[\\/]claude$/.test(mac), true)
+  eq('非 Windows 的包名也对', mac.includes('claude-agent-sdk-darwin-arm64'), true)
 }
 
 console.log(`\n${passed} 通过,${failed} 失败`)

@@ -25,7 +25,10 @@
 
 - Windows 10 / 11
 - Node.js ≥ 20
-- **Claude Code CLI** —— 应用启动时会自动检测,缺失时提供一键安装
+- **Claude Code** —— 不用另外装。Agent SDK 把版本配套的 `claude` 可执行文件
+  作为可选依赖一起装了,安装包也把它一并带上(这也是安装包 150 MB 出头的原因)。
+  版本必须与 SDK 对齐,所以宁可随包分发,也不去赌本机全局装的是哪个版本。
+  只有在这份配套文件缺失时,才回退去找 PATH 上的 `claude`,并在引导页提供一键安装。
 
 登录方式二选一:
 
@@ -55,7 +58,7 @@ npm run dev
 
 ## 测试
 
-四层。前两层不产生 API 调用,后两层会。
+五层。前两层不产生 API 调用,后三层会。
 
 **单元测试** —— 纯函数,不花钱,已进 CI:
 
@@ -90,13 +93,25 @@ npm run e2e
 历史不丢、新会话进入侧边栏、点回旧会话载入其历史、Bash 工具行与其输出展开。
 使用独立的 `--user-data-dir`,不会读写你真实的 ClaudeDeck 配置。
 
+**打包版冒烟** —— 驱动 `release/win-unpacked/` 里那个真正的 exe:
+
+```bash
+npm run dist && npm run packaged
+```
+
+上面四层跑的都是开发构建,`node_modules` 摊在磁盘上。打包后它被压进
+`app.asar`,**asar 里的可执行文件是 spawn 不起来的** —— 这一整类
+「dev 好好的、装完打不开」的毛病,前四层一条都照不到。这一层专门堵它:
+起窗口、发一条消息、确认真有回复、确认没有报错条。
+
 ## 打包安装程序
 
 ```bash
 npm run dist
 ```
 
-产物在 `release/`,为 NSIS 安装包。
+产物在 `release/`,为 NSIS 安装包。打完包请顺手跑一次 `npm run packaged` ——
+交出去之前,至少让那个 exe 自己说过一句话。
 
 ## 发布
 
@@ -144,6 +159,7 @@ src/
     chat.ts               ChatSession —— 流式输入模式下的一次对话
     config.ts             偏好与 safeStorage 凭据(含旧结构迁移)
     doctor.ts             Claude Code CLI 检测与安装
+    binary.ts             定位随包分发的 claude 可执行文件(打包后不能走 asar)
     tools.ts              把 SDK 的工具调用归一化成界面能画的行
   preload/              contextBridge 白名单 API
   renderer/src/
@@ -155,7 +171,7 @@ src/
     layout.css            骨架样式,只引用 token
     fonts.css + fonts/    本地打包的字体与许可证
   shared/               主进程与渲染层共用的类型
-scripts/                unit / measure / smoke / e2e
+scripts/                unit / contrast / measure / smoke / e2e / packaged
 docs/
   DESIGN-SPEC.md          界面规格(给 Claude Design 的输入)
   IMPLEMENTATION-BRIEF.md 实施说明(设计终稿的工程对照)
@@ -167,16 +183,14 @@ docs/
 
 **接下来打算做的:**
 
-- `.claude` 配置读写中栏 —— 在侧栏与对话区之间开一栏,范围只到 `.claude/`
-  和项目根的 `CLAUDE.md`,不做通用文件树
-- 子进程面板 —— 后台 Shell / subagent 的查看与停止
-- 分支与文件回退 —— 只 fork 对话不回退磁盘会让上下文和硬盘不一致
-- 深色主题 —— 换一组 token,布局不动
 - 跨会话搜索
+- 应用图标 —— 目前还是 Electron 的默认图标
 
-**已知做不到的:** `AskUserQuestion` 与 `ExitPlanMode` 不对 Agent SDK 会话开放,
-所以对应的界面暂时无法实现。收到无法渲染的对话框时一律安全取消并在界面上说明,
-不会猜测参数硬画一个选择框。原因与证据记在 [CLAUDE.md](CLAUDE.md)。
+**还没打通的:** `AskUserQuestion` 与 `ExitPlanMode` 两张卡已经按 CLI 二进制里
+实证出来的载荷契约实现了,但这两个工具没有出现在 Agent SDK 会话的工具列表里,
+所以触发不到,也因此**未经端到端验证**。准确的说法是**我没找到那个开关**,
+而不是「做不到」—— 试过哪些配置、证据是什么,都记在 [CLAUDE.md](CLAUDE.md)。
+在打通之前,收到无法识别的对话框一律安全取消并在界面上说明,不猜参数硬画。
 
 ## 文档
 

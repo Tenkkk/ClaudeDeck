@@ -1,5 +1,6 @@
-import { exec } from 'node:child_process'
+import { exec, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { resolveClaudeExecutable } from './binary.js'
 import { getConfig } from './config.js'
 import type { DoctorReport } from '../shared/ipc.js'
 
@@ -10,6 +11,9 @@ import type { DoctorReport } from '../shared/ipc.js'
 // fixed literals with no interpolated input, so a single literal command string
 // is both simpler and the safer shape.
 const run = promisify(exec)
+// 绝对路径的 .exe 不需要 shell,也就不用为「D:\Program Files\...」里的空格
+// 操心引号 —— 这种情况一律走 execFile。
+const runFile = promisify(execFile)
 
 /**
  * ClaudeDeck wraps Claude Code; it does not replace it. The SDK spawns the
@@ -21,11 +25,15 @@ export async function runDoctor(): Promise<DoctorReport> {
   const config = getConfig()
   const credentialsConfigured = config.hasApiKey || config.baseUrl !== ''
 
+  // 报的必须是**实际会被启动的那一个**。打包后应用自带一份与 SDK 版本配套的
+  // claude,此时去报 PATH 上那份全局 CLI 的版本就是在撒谎;而且没装过全局
+  // CLI 的用户会被引导页拦下来,让他去装一个应用根本不用的东西。
+  const bundled = resolveClaudeExecutable()
+
   try {
-    const { stdout } = await run('claude --version', {
-      timeout: 15_000,
-      windowsHide: true,
-    })
+    const { stdout } = bundled
+      ? await runFile(bundled, ['--version'], { timeout: 15_000, windowsHide: true })
+      : await run('claude --version', { timeout: 15_000, windowsHide: true })
     // `claude --version` 输出形如 "2.1.220 (Claude Code)" —— 只取版本号,
     // 后缀在「0.1.0 · CLI 2.1.220」这一行里是噪音。
     const raw = stdout.trim()

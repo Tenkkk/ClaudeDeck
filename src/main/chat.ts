@@ -1,4 +1,5 @@
 import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { resolveClaudeExecutable } from './binary.js'
 import { credentialEnv } from './config.js'
 import {
   askCardFromPayload,
@@ -127,6 +128,9 @@ export class ChatSession {
       prompt: this.inbox,
       options: {
         cwd: opts.cwd,
+        // 打包后必须显式指过去,否则 SDK 会去 asar 里启动那个 exe —— 起不来。
+        // 开发时是 undefined,走 SDK 自己的解析。见 binary.ts。
+        pathToClaudeCodeExecutable: resolveClaudeExecutable(),
         resume: opts.resume,
         // Resuming without forkSession continues the same session id, so the
         // sidebar entry the user clicked stays the entry that grows.
