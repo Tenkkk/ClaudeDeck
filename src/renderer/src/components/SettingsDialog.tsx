@@ -1,5 +1,74 @@
 import { useEffect, useState } from 'react'
-import type { AppConfig, DoctorReport } from '../../../shared/ipc.js'
+import type { AppConfig, DoctorReport, UpdateState } from '../../../shared/ipc.js'
+
+/**
+ * 更新那一节。
+ *
+ * 检查、下载、安装分成三次点击 —— 153 MB 的东西不该在人不知情时占带宽,
+ * 正聊着一半被重启更是不能接受。
+ *
+ * 下载时显示的是**实际传输量**:差分更新只传变化的块,那个数字明显小于
+ * 安装包大小,也就成了「增量确实生效了」最直接的证据。
+ */
+function UpdateSection({ state }: { state: UpdateState | null }): React.JSX.Element {
+  const phase = state?.phase ?? 'idle'
+
+  if (phase === 'downloading') {
+    return (
+      <>
+        <div className="ctx-limit">
+          <div className="ctx-limit-head">
+            <span>正在下载 {state?.version ?? ''}</span>
+            <span className="ctx-tokens">{state?.percent ?? 0}%</span>
+          </div>
+          <div className="ctx-limit-bar">
+            <span style={{ width: `${state?.percent ?? 0}%` }} />
+          </div>
+          {state?.totalMb !== undefined && (
+            <div className="hint">
+              {state.transferredMb} / {state.totalMb} MB —— 只传有变化的部分
+            </div>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {phase === 'available' && (
+        <>
+          <div className="set-row">
+            <span className="set-label">新版本</span>
+            <span className="set-value">{state?.version}</span>
+          </div>
+          {state?.notes && <div className="set-note">{state.notes}</div>}
+        </>
+      )}
+      {phase === 'latest' && <div className="set-note">已经是最新版本。</div>}
+      {phase === 'ready' && (
+        <div className="set-note set-ok">{state?.version} 已下载完毕,重启即可完成安装。</div>
+      )}
+      {phase === 'error' && <div className="set-note set-bad">{state?.message}</div>}
+
+      <div className="row set-actions update-actions">
+        {phase === 'ready' ? (
+          <button className="primary" onClick={() => void window.api.update.install()}>
+            重启并安装
+          </button>
+        ) : phase === 'available' ? (
+          <button className="primary" onClick={() => void window.api.update.download()}>
+            下载更新
+          </button>
+        ) : (
+          <button disabled={phase === 'checking'} onClick={() => void window.api.update.check()}>
+            {phase === 'checking' ? '检查中…' : '检查更新'}
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
 
 /**
  * 系统设置。
@@ -31,8 +100,15 @@ export default function SettingsDialog({
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [update, setUpdate] = useState<UpdateState | null>(null)
 
   useEffect(() => setBaseUrl(config?.baseUrl ?? ''), [config?.baseUrl])
+
+  // 打开设置时取一次当前状态,之后跟着主进程推的进度走
+  useEffect(() => {
+    void window.api.update.state().then(setUpdate)
+    return window.api.update.onState(setUpdate)
+  }, [])
 
   const source =
     doctor?.cliSource === 'bundled'
@@ -141,6 +217,15 @@ export default function SettingsDialog({
             )}
             {saved && <span className="hint">已保存,下次新建会话生效</span>}
           </div>
+
+          {/* ---- 更新 ---- */}
+          <div className="ctx-sep" />
+          <div className="pop-group">更新</div>
+          <div className="set-row">
+            <span className="set-label">当前版本</span>
+            <span className="set-value mono">{update?.current ?? '—'}</span>
+          </div>
+          <UpdateSection state={update} />
 
           {/* 主题与账号不在这儿 —— 它们跟着侧栏底部那颗按钮走。
               这里只放「这个应用怎么连上 Claude Code」这一件事。 */}

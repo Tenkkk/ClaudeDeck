@@ -524,7 +524,16 @@ try {
     await page.waitForSelector('.midcol-text', { timeout: 10_000 })
     check('CLAUDE.md 可写,不标只读', (await page.$$eval('.midcol-ro', (n) => n.length)) === 0)
 
-    // ✕ 是关掉整栏,不是退回树 —— 两颗按钮各管各的
+    // ✕ 是关掉整栏,不是退回树 —— 两颗按钮各管各的。
+    // 它离右边界必须够远:那里压着 7px 的拖拽手柄,贴边就点不到了
+    // 两个盒子在同一次 evaluate 里量,免得两套 API 的坐标基准对不上
+    const gap = await page.evaluate(() => {
+      const mid = document.querySelector('.midcol')?.getBoundingClientRect()
+      const btns = document.querySelectorAll('.midcol-head .icon-btn')
+      const close = btns[btns.length - 1]?.getBoundingClientRect()
+      return mid && close ? Math.round(mid.right - close.right) : null
+    })
+    check('关闭按钮没被拖拽手柄压住', gap !== null && gap >= 4, `离右边界 ${gap}px`)
     await page.click('.midcol-head .icon-btn:last-of-type')
     await page.waitForFunction(() => !document.querySelector('.midcol'), undefined, {
       timeout: 10_000,
@@ -560,6 +569,18 @@ try {
     check('设置里写明 Claude Code 来源', /随安装包分发|系统 PATH/.test(setText))
     check('设置里有 Base URL 与密钥', /Base URL/.test(setText) && /API Key/.test(setText))
     check('密钥不回读明文', (await page.$eval('.dialog input[type=password]', (e) => e.value)) === '')
+    check('设置里有更新入口', /检查更新/.test(setText) && /当前版本/.test(setText))
+    // 开发构建下 electron-updater 只对安装版生效,点了要给出明确说明而不是干等
+    // 必须指名更新那一行 —— 对话框里还有密钥那一节的「保存」,
+    // 用 .set-actions 会取到第一个
+    await page.click('.dialog .update-actions button')
+    await page.waitForFunction(
+      () => /只对安装版生效|已经是最新|新版本|检查中/.test(document.querySelector('.dialog-body')?.textContent ?? ''),
+      undefined,
+      { timeout: 15_000 },
+    )
+    const upText = await page.$eval('.dialog-body', (e) => e.textContent ?? '')
+    check('检查更新有明确回执', /只对安装版生效|已经是最新|新版本/.test(upText), upText.slice(-46).trim())
     await page.click('.dialog-head .icon-btn')
     await page.waitForFunction(() => !document.querySelector('.dialog'), undefined, {
       timeout: 5_000,

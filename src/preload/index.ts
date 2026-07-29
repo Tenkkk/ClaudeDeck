@@ -8,6 +8,7 @@ import type {
   AccountInfo,
   AgentInfo,
   McpServer,
+  UpdateState,
   DoctorReport,
   EffortLevel,
   FileEntry,
@@ -92,6 +93,17 @@ const api = {
       const listener = (_e: unknown, max: boolean): void => handler(max)
       ipcRenderer.on('window:maximized', listener)
       return () => ipcRenderer.removeListener('window:maximized', listener)
+    },
+  },
+  update: {
+    state: (): Promise<UpdateState | null> => ipcRenderer.invoke('update:state'),
+    check: (): Promise<UpdateState | null> => ipcRenderer.invoke('update:check'),
+    download: (): Promise<void> => ipcRenderer.invoke('update:download'),
+    install: (): Promise<void> => ipcRenderer.invoke('update:install'),
+    onState: (handler: (s: UpdateState) => void): (() => void) => {
+      const listener = (_e: unknown, s: UpdateState): void => handler(s)
+      ipcRenderer.on('update:state', listener)
+      return () => ipcRenderer.removeListener('update:state', listener)
     },
   },
   app: {

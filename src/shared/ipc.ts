@@ -182,6 +182,26 @@ export interface AccountInfo {
   apiProvider?: string
 }
 
+/**
+ * 应用内更新的状态机。
+ *
+ * `downloading` 那几个数字来自 electron-updater 的进度事件:差分下载时
+ * `totalMb` 是**实际要传的字节**,不是安装包大小 —— 它明显小于整包,
+ * 正是能看出增量生效了的地方。
+ */
+export interface UpdateState {
+  phase: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'ready' | 'error'
+  /** 当前运行的版本,任何阶段都有 */
+  current: string
+  /** 远端那一版,available / ready 时有 */
+  version?: string
+  notes?: string
+  percent?: number
+  transferredMb?: number
+  totalMb?: number
+  message?: string
+}
+
 export interface Versions {
   app: string
   cli: string | null

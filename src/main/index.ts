@@ -20,6 +20,7 @@ import {
   updateConfig,
 } from './config.js'
 import { installCli, runDoctor } from './doctor.js'
+import { bindUpdater, type Updater } from './updater.js'
 import {
   listClaudeEntries,
   listProjectDir,
@@ -51,6 +52,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
 let active: ChatSession | null = null
+let updater: Updater | null = null
 
 function emit(event: ChatEvent): void {
   mainWindow?.webContents.send('chat:event', event)
@@ -79,6 +81,8 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  updater = bindUpdater(mainWindow)
 
   // 最大化状态要回传:自绘的那颗按钮得知道画「最大化」还是「还原」
   const sendMax = (): void =>
@@ -320,6 +324,12 @@ function registerIpc(): void {
   })
   ipcMain.handle('window:close', () => mainWindow?.close())
   ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() === true)
+
+  // 应用内更新 —— 检查、下载、安装三步都由用户点,不自动做任何一步
+  ipcMain.handle('update:state', () => updater?.current() ?? null)
+  ipcMain.handle('update:check', () => updater?.check() ?? null)
+  ipcMain.handle('update:download', () => updater?.download())
+  ipcMain.handle('update:install', () => updater?.install())
 
   /** 在资源管理器里打开项目目录(§08 右键菜单)。 */
   ipcMain.handle('shell:openProject', (_e, path: string) => shell.openPath(path))

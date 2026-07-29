@@ -566,7 +566,17 @@ kbd,
 .midcol {
   display: grid;
   grid-template-rows: auto auto 1fr;
+  /*
+   * 必须显式给一列 minmax(0, 1fr)。
+   *
+   * 只写 grid-template-rows 的话,隐式的那一列是 auto —— 它会撑到内容宽度。
+   * 于是头部比这一列还宽,里面的省略号永远用不上(容器都跟着变宽了,
+   * flex 没有收缩的理由),关闭按钮被推到列外,正好落在拖拽手柄下面:
+   * 看得见、点不到,一按就变成拖列宽。
+   */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
   position: relative;
   background: var(--raised);
   border-right: 1px solid var(--border);
@@ -576,7 +586,9 @@ kbd,
   display: flex;
   align-items: center;
   gap: var(--s8);
-  padding: var(--s12) var(--s8) var(--s12) var(--s16);
+  /* 右边留够:拖拽手柄是 7px 宽、z-index 5 的透明条,压在两栏交界上。
+     贴边放按钮的话它整个被手柄盖住 —— 看得见、点不到,鼠标一按就变成拖列宽。 */
+  padding: var(--s12) var(--s12) var(--s12) var(--s16);
   border-bottom: 1px solid var(--border);
 }
 
@@ -612,6 +624,15 @@ kbd,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 不写这条,省略号是摆设:nowrap 的 flex 项最小宽度等于整段文字,
+     它不肯收缩,只会把右边的按钮挤出栏外 */
+  min-width: 0;
+}
+
+/* 两颗按钮不参与收缩 —— 该被压掉的是路径,不是可点的东西 */
+.midcol-head .icon-btn,
+.midcol-back {
+  flex: none;
 }
 
 .midcol-error {
