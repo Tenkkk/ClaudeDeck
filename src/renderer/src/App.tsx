@@ -299,9 +299,47 @@ export default function App(): React.JSX.Element {
     })
   }, [refreshSessions, refreshMeters, mergeMessageIds])
 
+  /*
+   * 对话区跟着新内容走 —— 但只在你本来就贴着底的时候。
+   *
+   * 原先是「transcript / streaming 一变就滚到底」。那样有两处不对:
+   *
+   * 1. 只认 state 变化。可正文长高不一定经过 state —— 代码块换行、思考那一行
+   *    从「思考中 8 秒」变成「思考中 12 秒 · 1.2k tokens」、Markdown 收尾时
+   *    重新排版,这些都会把内容顶高,而依赖数组毫无察觉。改成盯 DOM 的变动。
+   * 2. 无条件滚到底。往回翻着读的时候被拽回底部,比不滚更烦。
+   *
+   * 贴底的判定留 24px 余量:滚动条很难精确停在 0。
+   */
+  const stickRef = useRef(true)
+
   useEffect(() => {
-    transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight })
-  }, [transcript, streaming])
+    const el = transcriptRef.current
+    if (!el) return
+    const onScroll = (): void => {
+      stickRef.current = el.scrollHeight - el.clientHeight - el.scrollTop < 24
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [phase])
+
+  useEffect(() => {
+    const el = transcriptRef.current
+    if (!el) return
+    const follow = (): void => {
+      if (stickRef.current) el.scrollTop = el.scrollHeight
+    }
+    const mo = new MutationObserver(follow)
+    mo.observe(el, { childList: true, subtree: true, characterData: true })
+    return () => mo.disconnect()
+  }, [phase])
+
+  // 换会话就当作重新贴底:载入的是另一段历史,应当看见最后一条
+  useEffect(() => {
+    stickRef.current = true
+    const el = transcriptRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [activeSession])
 
   useEffect(() => {
     if (phase !== 'workspace') return
@@ -369,7 +407,12 @@ export default function App(): React.JSX.Element {
 
   /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
   async function openSession(projectPath: string, sessionId: string): Promise<void> {
+    // 上一轮的残留一并清掉:主进程已经不再转发旧会话的事件,但界面上
+    // 已经画出来的半截回答、还亮着的「停止」按钮得自己收拾
     setStreaming('')
+    setThinking('')
+    setBusy(false)
+    setTasks([])
     setError(null)
     if (projectPath !== config?.activeWorkspace) {
       setConfig(await window.api.projects.activate(projectPath))
@@ -387,6 +430,9 @@ export default function App(): React.JSX.Element {
     activeSessionRef.current = null
     setTranscript([])
     setStreaming('')
+    setThinking('')
+    setBusy(false)
+    setTasks([])
     setError(null)
     await window.api.chat.open()
     await refreshMeters()

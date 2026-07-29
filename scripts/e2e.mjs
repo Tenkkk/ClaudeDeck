@@ -757,6 +757,35 @@ try {
     const stillThinking = await page.$$eval('.thinking', (n) => n.length)
     check('答完就收起', stillThinking === 0)
 
+    // 8 贴底时跟着新内容走(内容长高不一定经过 state,所以盯的是 DOM 变动)
+    await page.evaluate(() => {
+      const el = document.querySelector('.transcript')
+      if (el) el.scrollTop = el.scrollHeight
+    })
+    await page.fill('.composer textarea', '连续写 30 行,每行一句短话。不要用工具。')
+    await page.click('.composer [data-state="send"]')
+    await settle(page)
+    await page.waitForTimeout(600)
+    const scroll = await page.$eval('.transcript', (e) => ({
+      gap: Math.round(e.scrollHeight - e.clientHeight - e.scrollTop),
+      scrollable: e.scrollHeight > e.clientHeight + 10,
+    }))
+    check('贴底时自动跟到底', !scroll.scrollable || scroll.gap < 24, `离底 ${scroll.gap}px`)
+
+    // 9 往回翻的时候不该被拽回去
+    await page.evaluate(() => {
+      const el = document.querySelector('.transcript')
+      if (el) el.scrollTop = 0
+    })
+    await page.waitForTimeout(200)
+    await page.evaluate(() => {
+      // 直接改 DOM 模拟「内容又长高了」,不必再花一次 API
+      document.querySelector('.transcript')?.appendChild(document.createElement('div'))
+    })
+    await page.waitForTimeout(200)
+    const kept = await page.$eval('.transcript', (e) => Math.round(e.scrollTop))
+    check('往回翻时不被拽回底部', kept < 24, `scrollTop ${kept}`)
+
     // ---- Claude 反问你 · §13 ---------------------------------------------------
     // 这条以前是「实现了但触发不到」。实测发现它根本不走 onUserDialog,而是走
     // canUseTool —— 直接放行的话工具就在无人作答的情况下跑完,模型收到

@@ -105,8 +105,19 @@ function openSession(resume?: string): void {
   if (!config.activeWorkspace) throw new Error('尚未选择工作目录。')
 
   active?.dispose()
-  active = new ChatSession(emit)
-  active.start({
+
+  /*
+   * 事件带着「是哪个会话发的」再出门。
+   *
+   * 切会话时旧 query 正在输出的话,它的 delta 还会在管道里飘一会儿;
+   * 直接转发出去的话,上一轮的回答会接在新会话的对话流下面。
+   * 这里认对象身份:不是当前这个 session 发的,一律丢弃。
+   */
+  const session = new ChatSession((event) => {
+    if (session === active) emit(event)
+  })
+  active = session
+  session.start({
     cwd: config.activeWorkspace,
     resume,
     model: config.model,

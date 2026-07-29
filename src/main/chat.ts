@@ -77,6 +77,14 @@ export interface StartOptions {
   permissionMode: PermissionMode
 }
 
+/**
+ * 「接受编辑」这一档自动放行的工具 —— 只有动文件的那几个。
+ *
+ * Bash 不在其中:一条命令能删库,和改一个文件不是一个量级,
+ * 想让它也不问,得自己去点「完全放行」。
+ */
+const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
+
 let permissionSeq = 0
 let elicitSeq = 0
 let dialogSeq = 0
@@ -112,6 +120,8 @@ export class ChatSession {
   private outputTokens = 0
   /** 当前这条助手消息是否已经流式送过正文 —— 决定收尾时要不要补画 */
   private streamedText = false
+  /** 当前权限档。canUseTool 要按它决定哪些不必再问 */
+  private permissionMode: PermissionMode = 'default'
   private pendingAsks = new Map<string, (v: AskAnswer | null) => void>()
   private pendingPlans = new Map<string, (accepted: boolean) => void>()
   private pendingElicitations = new Map<
@@ -143,6 +153,7 @@ export class ChatSession {
     this.sessionId = opts.resume ?? null
     // 从已有会话续上来的,磁盘上当然有东西
     this.persisted = Boolean(opts.resume)
+    this.permissionMode = opts.permissionMode
 
     this.q = query({
       prompt: this.inbox,
@@ -256,6 +267,18 @@ export class ChatSession {
 
           // 用户勾过「本次会话内不再问」的工具直接放行,不再打断
           if (this.alwaysAllow.has(toolName)) {
+            return { behavior: 'allow' as const, updatedInput: input }
+          }
+
+          /*
+           * 「接受编辑」这一档必须在这里自己兑现。
+           *
+           * bypassPermissions 是 CLI 自己拦掉的 —— 它压根不会调 canUseTool
+           * (SDK 还会打一条警告说这个回调不会被调用)。但 acceptEdits 不是:
+           * 回调照样进来,如果宿主不管三七二十一都弹卡,这一档就等于没生效,
+           * 表现就是「选了自动接受编辑,还是每次都问」。
+           */
+          if (this.permissionMode === 'acceptEdits' && EDIT_TOOLS.has(toolName)) {
             return { behavior: 'allow' as const, updatedInput: input }
           }
           const requestId = `perm-${++permissionSeq}`
@@ -449,6 +472,8 @@ export class ChatSession {
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
+    // 本地这份也要更新 —— canUseTool 按它决定哪些不必再问
+    this.permissionMode = mode
     await this.q?.setPermissionMode(mode)
   }
 
