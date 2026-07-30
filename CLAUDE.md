@@ -158,7 +158,8 @@ refusal_fallback_prompt      permission_prompt
 ## 样式
 
 `src/renderer/src/styles.css` 里的一切都是**占位**。真正的视觉来自 Organic
-设计系统,经 Claude Design 出稿后整体替换。改样式前先看 `docs/DESIGN-SPEC.md`。
+设计 token 与骨架样式。改样式前先看 `docs/DESIGN-SPEC.md` ——
+那份文档记的是界面**现状**与理由,不是待办清单;改了界面就要同步它。
 
 ## 改依赖之后必须全量重装
 

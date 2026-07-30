@@ -248,7 +248,9 @@ docs/
 当前可用的能力见 [CHANGELOG](CHANGELOG.md)。接下来打算做的:
 
 - 会话正文的全文搜索(目前只搜标题与首句)
-- 文件树里的编辑范围可配置
+- 往 ADE(Agentic Development Environment)方向走。文件树目前只能改
+  `.claude/` 与根 `CLAUDE.md`,这是早期版本有意收敛的边界,到那时会重新设计,
+  而不是简单放开一个开关
 - macOS 支持
 
 **已知边界:** 额度接口是实验性的,API Key / Bedrock / Vertex 会话拿不到;
@@ -258,7 +260,8 @@ docs/
 
 ## 文档
 
-- [界面规格](docs/DESIGN-SPEC.md) —— 界面的结构、状态与文案
+- [界面规格](docs/DESIGN-SPEC.md) —— 界面**现在是什么样、为什么是这样**。
+  兼作回归基准:界面变了而它没变,就是其中一方错了
 - [实施说明](docs/IMPLEMENTATION-BRIEF.md) —— 设计与工程的对照、接口清单与五个坑
 - [CLAUDE.md](CLAUDE.md) —— 给 AI 协作者的约束、SDK 能力清单与踩过的坑
 - [更新日志](CHANGELOG.md)
