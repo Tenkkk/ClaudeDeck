@@ -55,7 +55,9 @@ let active: ChatSession | null = null
 let updater: Updater | null = null
 
 function emit(event: ChatEvent): void {
-  mainWindow?.webContents.send('chat:event', event)
+  // 退出路径上 dispose 也会发事件(收卡),那时窗口可能已经销毁
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('chat:event', event)
 }
 
 function createWindow(): void {
@@ -390,7 +392,12 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('chat:send', (_e, text: string) => {
-    if (!active) openSession()
+    /*
+     * query 死了(CLI 进程崩了/断连)就先原地重开再发:往死 query 的
+     * inbox 里推消息没人消费,表现是又一次永久转圈。resume 同一条会话,
+     * 没落过盘的空会话则直接开新的(resumable 挡住「resume 不存在的 id」)。
+     */
+    if (!active || active.dead) openSession(active?.resumable ?? undefined)
     active?.send(text)
     return true
   })

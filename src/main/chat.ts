@@ -144,6 +144,13 @@ export class ChatSession {
 
   /** 已 dispose 的会话不再发事件 —— 主动拆掉的流收尾时不该报「断连」 */
   private disposed = false
+  /** 消费循环停了而且不是我们拆的 —— CLI 进程死了,inbox 里的消息没人收 */
+  private broken = false
+
+  /** 死掉的 query 收不了消息,发消息前要先重开(resume 同一条会话) */
+  get dead(): boolean {
+    return this.broken
+  }
 
   sessionId: string | null = null
   /**
@@ -414,10 +421,12 @@ export class ChatSession {
        * 后者不发事件的话,界面上只剩一个永远转下去的圈,连报错都没有。
        */
       if (!this.disposed) {
-        this.emit({ type: 'error', message: '会话进程意外退出,请重新打开会话。' })
+        this.broken = true
+        this.emit({ type: 'error', message: '会话进程意外退出,再发一条消息会自动重连。' })
       }
     } catch (err) {
       if (!this.disposed) {
+        this.broken = true
         this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
       }
     }
@@ -789,13 +798,31 @@ export class ChatSession {
   dispose(immediate = false): void {
     if (this.disposed) return
     this.disposed = true
-    for (const settle of this.pendingPermissions.values()) settle({ allow: false, remember: false })
+    /*
+     * 收卡再结账。此刻事件围栏还认这个会话(active 的重指在 dispose 返回
+     * 之后),dismiss 发得出去。换会话时渲染层自己也会清卡,重复无害;
+     * 但 query 死后自动重开的那条路不经过渲染层 —— 不在这里收,
+     * 死会话的卡就会一直浮着。
+     */
+    for (const [id, settle] of this.pendingPermissions) {
+      this.emit({ type: 'dismiss', card: 'permission', id })
+      settle({ allow: false, remember: false })
+    }
     this.pendingPermissions.clear()
-    for (const p of this.pendingElicitations.values()) p.resolve(null)
+    for (const [id, p] of this.pendingElicitations) {
+      this.emit({ type: 'dismiss', card: 'elicitation', id })
+      p.resolve(null)
+    }
     this.pendingElicitations.clear()
-    for (const r of this.pendingAsks.values()) r(null)
+    for (const [id, r] of this.pendingAsks) {
+      this.emit({ type: 'dismiss', card: 'ask', id })
+      r(null)
+    }
     this.pendingAsks.clear()
-    for (const r of this.pendingPlans.values()) r(false)
+    for (const [id, r] of this.pendingPlans) {
+      this.emit({ type: 'dismiss', card: 'plan', id })
+      r(false)
+    }
     this.pendingPlans.clear()
     this.inbox.close()
     const q = this.q
