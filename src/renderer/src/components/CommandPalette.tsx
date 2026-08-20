@@ -13,8 +13,9 @@ const GROUP_LABEL: Record<SlashCommandItem['source'], { label: string; note?: st
 /**
  * 斜杠命令面板 —— 设计终稿 §15。
  *
- * 列表由 supportedCommands() 运行时给,**界面不写死任何一条**。
- * 会话中途 SDK 会推新列表(在子目录里发现 skill),收到就整体替换。
+ * 列表由 supportedCommands() 运行时给,**界面不写死任何一条**,
+ * 在会话建立时取一次。SDK 有 commands_changed 推送(会话中途在子目录里
+ * 发现 skill 会推新列表),目前还没接 —— 接上之前列表以会话建立时为准。
  * 只在行首第一个字符是 `/` 时才弹。
  *
  * ## 一份数据,一个顺序

@@ -72,6 +72,17 @@ function knownProject(path: string): boolean {
   return getConfig().projects.some((p) => p.path === path)
 }
 
+/**
+ * 主进程崩了不能静默死:窗口还开着像是卡死,claude.exe 一串留在后台。
+ * 至少把进程树带走、把死因亮出来,再退出。
+ */
+process.on('uncaughtException', (err) => {
+  active?.dispose(true)
+  active = null
+  dialog.showErrorBox('ClaudeDeck 出错了', err.stack ?? String(err))
+  app.exit(1)
+})
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -95,6 +106,26 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  /*
+   * 渲染进程崩了(OOM、驱动问题)默认就是一扇白窗,而主进程和 claude.exe
+   * 都还活着。重载一次:主进程里的会话原封不动,界面起来会重新接上。
+   * 短时间内接连崩说明重载救不了 —— 别陷进白屏⇄崩溃的循环,报出来退出。
+   */
+  let lastRendererCrash = 0
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    if (details.reason === 'clean-exit') return
+    const now = Date.now()
+    if (now - lastRendererCrash < 10_000) {
+      active?.dispose(true)
+      active = null
+      dialog.showErrorBox('ClaudeDeck 界面反复崩溃', `原因:${details.reason}`)
+      app.exit(1)
+      return
+    }
+    lastRendererCrash = now
+    mainWindow?.webContents.reload()
+  })
 
   updater = bindUpdater(mainWindow)
 
