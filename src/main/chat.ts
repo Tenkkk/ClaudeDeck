@@ -373,6 +373,11 @@ export class ChatSession {
             .join('、')
 
           const requestId = opts.toolUseID
+          // 改文件的批准要看得见改什么:从入参合成的预览行直接复用工具行的
+          // 画法(结果回来之前 rowFromToolUse 就能算出 diff)
+          const previewRow = rowFromToolUse(opts.toolUseID, toolName, input)
+          const preview =
+            previewRow.tool === 'edit' && previewRow.hunks.length > 0 ? previewRow : undefined
           const decision = await new Promise<{ allow: boolean; remember: boolean }>((resolve) => {
             const settle = (v: { allow: boolean; remember: boolean }): void => {
               opts.signal.removeEventListener('abort', onAbort)
@@ -397,6 +402,10 @@ export class ChatSession {
               // 桥接层已经写好的整句提示与副标题,有就直送,渲染层不再自己拼
               title: opts.title,
               description: opts.description,
+              // 为什么被拦、拦在哪条路径上 —— CLI 给了就要让人看见
+              decisionReason: opts.decisionReason,
+              blockedPath: opts.blockedPath,
+              preview,
               ruleSummary: ruleSummary || undefined,
             })
           })

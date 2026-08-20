@@ -42,6 +42,7 @@ import {
   type PermissionMode,
   type SessionListItem,
   type SlashCommandItem,
+  type ToolRow as ToolRowData,
   type TranscriptItem,
   type TurnStatus,
   type UsageInfo,
@@ -58,6 +59,11 @@ interface PendingPermission {
   /** 桥接层写好的整句提示("Claude wants to read foo.txt"),有就用它当标题 */
   title?: string
   description?: string
+  /** 为什么被拦、拦在哪条路径 —— CLI 给了就显示 */
+  decisionReason?: string
+  blockedPath?: string
+  /** 改文件类工具从入参合成的 diff 行,复用工具行的画法 */
+  preview?: ToolRowData
   /** 「本次会话内不再问」将放行的范围,如 `Bash(ls:*)`。没有就不出那颗按钮 */
   ruleSummary?: string
 }
@@ -349,6 +355,9 @@ export default function App(): React.JSX.Element {
                   target: event.target,
                   title: event.title,
                   description: event.description,
+                  decisionReason: event.decisionReason,
+                  blockedPath: event.blockedPath,
+                  preview: event.preview,
                   ruleSummary: event.ruleSummary,
                 },
               ],
@@ -940,6 +949,14 @@ export default function App(): React.JSX.Element {
                   </>
                 )}
               </div>
+              {/* 改文件的批准先看得见改什么 —— diff 预览复用工具行 */}
+              {permission.preview && <ToolRow row={permission.preview} />}
+              {permission.decisionReason && <div className="hint">{permission.decisionReason}</div>}
+              {permission.blockedPath && (
+                <div className="hint">
+                  范围外路径:<strong className="card-target">{permission.blockedPath}</strong>
+                </div>
+              )}
               <div className="hint">{permission.description ?? '在你点下之前,对话停在这里。'}</div>
               <div className="row">
                 <button

@@ -2376,6 +2376,9 @@ kbd,
   font-family: var(--font-mono);
   font-size: var(--text-mono-l);
   margin-left: var(--s6);
+  /* 长命令、长路径必须能断行 —— 不断的话整张卡被一行撑出横向滚动 */
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 /* §14 MCP 表单卡。左条同样是陶土 —— 它也在拦你,只是提问的是外部服务。 */

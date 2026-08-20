@@ -472,8 +472,10 @@ export type ChatEvent =
   /**
    * 一次权限请求。`target` 是这次调用最该被看见的那个参数(文件路径 / 命令);
    * `title`/`description` 是 CLI 桥接层已经写好的整句提示,有就直接用,
-   * 不再自己拼;`ruleSummary` 是「本次会话内不再问」将放行的范围
-   * (如 `Bash(ls:*)`)—— **没有它就不该出现那颗按钮**。
+   * 不再自己拼;`decisionReason`/`blockedPath` 说明为什么被拦、拦在哪条路径;
+   * `preview` 是改文件类工具从入参合成的 diff 行 —— 批准之前先看得见改什么;
+   * `ruleSummary` 是「本次会话内不再问」将放行的范围(如 `Bash(ls:*)`)——
+   * **没有它就不该出现那颗按钮**。
    */
   | {
       type: 'permission'
@@ -482,6 +484,9 @@ export type ChatEvent =
       target?: string
       title?: string
       description?: string
+      decisionReason?: string
+      blockedPath?: string
+      preview?: ToolRow
       ruleSummary?: string
     }
   /** MCP 服务要你填一张表 · §14 */
