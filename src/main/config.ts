@@ -77,6 +77,12 @@ function load(): StoredConfig {
       // next save overwrite the bad file.
     }
   }
+  // 计划模式与完全放行只在会话里有意义,不跨启动:上次点过「完全放行」,
+  // 这次一开机就静默放行一切 —— 危险档必须由人每次亲手再选;
+  // 计划模式跨启动则是「昨天在规划,今天打开发现它什么都不肯改」。
+  if (next.permissionMode === 'plan' || next.permissionMode === 'bypassPermissions') {
+    next.permissionMode = 'default'
+  }
   cache = next
   return next
 }
