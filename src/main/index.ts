@@ -39,6 +39,7 @@ import type {
   EffortLevel,
   FileEntry,
   FileRead,
+  ImageAttachment,
   PermissionMode,
   RewindPreview,
   SaveResult,
@@ -290,16 +291,32 @@ function registerIpc(): void {
       if (!Array.isArray(content)) continue
 
       let text = ''
+      let imageCount = 0
       const flushText = (): void => {
         if (!(role === 'user' && isInjectedUserText(text))) {
           const shown = role === 'user' ? unexpandSlashCommand(text) : text
-          if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
+          // 图片正文里看不见,至少把「带了几张」还原出来;纯图消息也要占位
+          if (shown.trim() || imageCount > 0) {
+            if (role === 'user') {
+              out.push({
+                kind: 'user',
+                text: shown,
+                id: raw.uuid,
+                ...(imageCount > 0 ? { images: imageCount } : {}),
+              })
+            } else {
+              out.push({ kind: 'assistant', text: shown, id: raw.uuid })
+            }
+            imageCount = 0
+          }
         }
         text = ''
       }
       for (const b of content as Block[]) {
         if (b.type === 'text' && b.text) {
           text += b.text
+        } else if (b.type === 'image') {
+          imageCount++
         } else if (b.type === 'thinking' && b.thinking) {
           // 思考也要回放 —— 不然切走再切回,思考块全部消失
           out.push({ kind: 'thinking', text: b.thinking })
@@ -473,14 +490,14 @@ function registerIpc(): void {
     return true
   })
 
-  ipcMain.handle('chat:send', (_e, text: string) => {
+  ipcMain.handle('chat:send', (_e, text: string, images?: ImageAttachment[]) => {
     /*
      * query 死了(CLI 进程崩了/断连)就先原地重开再发:往死 query 的
      * inbox 里推消息没人消费,表现是又一次永久转圈。resume 同一条会话,
      * 没落过盘的空会话则直接开新的(resumable 挡住「resume 不存在的 id」)。
      */
     if (!active || active.dead) openSession(active?.resumable ?? undefined)
-    active?.send(text)
+    active?.send(text, images ?? [])
     return true
   })
 

@@ -1564,6 +1564,15 @@ kbd,
   line-height: 1.7;
 }
 
+/* 消息带图的标记 —— 正文里看不见图,至少要知道带了几张 */
+.msg-attach {
+  display: inline-block;
+  margin-right: var(--s6);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  color: var(--ink-3);
+}
+
 /* 上下文压缩留痕 —— 低调的一行分界,不抢戏 */
 .compact-mark {
   justify-self: center;
@@ -2954,6 +2963,44 @@ button.todo-box {
 .composer textarea:focus {
   outline: none;
   border: none;
+}
+
+/* 粘贴进来还没发出去的图片 —— 缩略图一排,发送前可逐张移除 */
+.attach-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s8);
+}
+
+.attach-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.attach-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--r-inline);
+  border: 1px solid var(--border);
+}
+
+.attach-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--text-ui-s);
+}
+
+.attach-x:hover {
+  color: var(--ink-1);
 }
 
 /* 左:权限。右:模型、努力、发送 */

@@ -18,12 +18,15 @@ export default memo(function Message({
   text,
   ts,
   id,
+  images,
   onFork,
 }: {
   role: 'user' | 'assistant'
   text: string
   ts?: number
   id?: string
+  /** 随消息发出去的图片张数 —— 正文里看不见,至少要知道带了图 */
+  images?: number
   onFork?: (id: string) => void
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
@@ -36,6 +39,7 @@ export default memo(function Message({
       {/* 用户自己打的字保持原样 —— 他打的就是他想说的,不该被当标记语言重排。
           Claude 的正文才走 Markdown。 */}
       <div className={role === 'user' ? 'msg-user' : 'msg-claude'}>
+        {images ? <span className="msg-attach">图 ×{images}</span> : null}
         {role === 'user' ? text : <Markdown text={text} />}
       </div>
       <div className="msg-slot">

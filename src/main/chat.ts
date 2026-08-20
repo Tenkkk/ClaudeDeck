@@ -26,6 +26,7 @@ import type {
   ElicitationField,
   AccountInfo,
   AgentInfo,
+  ImageAttachment,
   InitInfo,
   McpServer,
   PermissionMode,
@@ -622,12 +623,23 @@ export class ChatSession {
     this.emit({ type: 'commands', commands: annotateSources(list, this.cwd) })
   }
 
-  send(text: string): void {
+  send(text: string, images: ImageAttachment[] = []): void {
     // 发出去就会落盘,从这一刻起它才 resume 得回来
     this.persisted = true
+    // 带图就升级成块状内容;纯文本保持原样(CLI 对字符串路径优化更多)
+    const content =
+      images.length > 0
+        ? [
+            ...images.map((img) => ({
+              type: 'image' as const,
+              source: { type: 'base64' as const, media_type: img.mediaType, data: img.data },
+            })),
+            ...(text.trim() ? [{ type: 'text' as const, text }] : []),
+          ]
+        : text
     this.inbox.push({
       type: 'user',
-      message: { role: 'user', content: text },
+      message: { role: 'user', content },
       parent_tool_use_id: null,
       // Required: the SDK fails closed at strict isHuman() gates when a host
       // wrapping keyboard input does not attribute the message explicitly.

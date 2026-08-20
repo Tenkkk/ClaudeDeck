@@ -13,6 +13,7 @@ import type {
   EffortLevel,
   FileEntry,
   FileRead,
+  ImageAttachment,
   InitInfo,
   ModelOption,
   PermissionMode,
@@ -115,7 +116,8 @@ const api = {
   },
   chat: {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),
-    send: (text: string): Promise<boolean> => ipcRenderer.invoke('chat:send', text),
+    send: (text: string, images?: ImageAttachment[]): Promise<boolean> =>
+      ipcRenderer.invoke('chat:send', text, images),
     /** 首屏三次控制往返合一;null 时退回逐项拉取 */
     init: (): Promise<InitInfo | null> => ipcRenderer.invoke('chat:init'),
     models: (): Promise<ModelOption[]> => ipcRenderer.invoke('chat:models'),

@@ -36,6 +36,7 @@ import {
   type BackgroundTask,
   type ClaudeEntry,
   type ElicitationCard as ElicitationCardData,
+  type ImageAttachment,
   type PlanCard as PlanCardData,
   type EffortLevel,
   type ModelOption,
@@ -147,6 +148,7 @@ const TranscriptList = memo(function TranscriptList({
             text={item.text}
             ts={item.ts}
             id={item.id}
+            images={item.kind === 'user' ? item.images : undefined}
             onFork={onFork}
           />
         ),
@@ -188,6 +190,8 @@ export default function App(): React.JSX.Element {
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  /** 粘贴进输入框、还没发出去的图片 */
+  const [images, setImages] = useState<ImageAttachment[]>([])
   /** 撞到额度上限时的说明行,点掉或本轮结束自动消失 */
   const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const [commands, setCommands] = useState<SlashCommandItem[]>([])
@@ -619,28 +623,28 @@ export default function App(): React.JSX.Element {
 
   async function send(): Promise<void> {
     const text = draft.trim()
-    if (!text) return
+    if (!text && images.length === 0) return
 
-    // 这几条是界面自己的命令,不是给 agent 的。终端里 /model 由 CLI 的界面层
-    // 处理,发给 agent 只会石沉大海 —— 命令面板拦得住敲回车,拦不住点「发送」。
-    // 认出来就直接把对应的浮层点开,和终端里敲 /model 得到的结果一致。
-    const ui = UI_COMMANDS[text.toLowerCase()]
-    if (ui) {
-      setDraft('')
-      setControlRequest(ui)
-      return
-    }
-
-    // /mcp 的数据 SDK 直接给,不必把命令发出去换一段降级文本回来。
-    // 结果留在对话流里 —— 你跑了一条命令,就该看见它的回执。
-    const panel = PANEL_COMMANDS[text.toLowerCase()]
-    if (panel) {
-      setDraft('')
-      setTranscript((t) => [...t, stamp({ kind: panel })])
-      return
+    // 这几条是界面自己的命令,不是给 agent 的(带图时当普通消息发)。
+    // 终端里 /model 由 CLI 的界面层处理,发给 agent 只会石沉大海。
+    if (images.length === 0) {
+      const ui = UI_COMMANDS[text.toLowerCase()]
+      if (ui) {
+        setDraft('')
+        setControlRequest(ui)
+        return
+      }
+      const panel = PANEL_COMMANDS[text.toLowerCase()]
+      if (panel) {
+        setDraft('')
+        setTranscript((t) => [...t, stamp({ kind: panel })])
+        return
+      }
     }
 
     setDraft('')
+    const sendImages = images
+    setImages([])
 
     /*
      * 侧栏那一条要**现在**就出现,不是等这一轮答完。
@@ -656,14 +660,22 @@ export default function App(): React.JSX.Element {
     const ws = config?.activeWorkspace
     if (ws) {
       const known = (sessionsByProject[ws] ?? []).some((s) => s.sessionId === activeSessionRef.current)
-      if (!known) setPendingSession({ path: ws, title: text })
+      if (!known) setPendingSession({ path: ws, title: text || '(图片)' })
     }
-    setTranscript((t) => [...t, stamp({ kind: 'user', text, ts: Date.now() })])
+    setTranscript((t) => [
+      ...t,
+      stamp({
+        kind: 'user',
+        text,
+        ts: Date.now(),
+        ...(sendImages.length > 0 ? { images: sendImages.length } : {}),
+      }),
+    ])
     setError(null)
     // 回答中发送不打断也不吞输入 —— 消息排队,当前轮答完接着处理。
     // 计时与计数只在「从闲到忙」时清零(markBusy),排队不动当前轮的表
     markBusy()
-    await window.api.chat.send(text)
+    await window.api.chat.send(text, sendImages)
   }
 
   // §15:只在行首第一个字符是 / 时才弹
@@ -1150,15 +1162,54 @@ export default function App(): React.JSX.Element {
             />
           )}
           <div className="composer">
+            {images.length > 0 && (
+              <div className="attach-row">
+                {images.map((img, i) => (
+                  <span key={i} className="attach-chip">
+                    <img
+                      className="attach-img"
+                      src={`data:${img.mediaType};base64,${img.data}`}
+                      alt={`粘贴的图片 ${i + 1}`}
+                    />
+                    <button
+                      className="attach-x"
+                      title="移除这张图"
+                      onClick={() => setImages((list) => list.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <textarea
               ref={composerRef}
               value={draft}
               placeholder={
                 busy
                   ? '正在回答…这条会排队,答完接着发(Enter 发送)'
-                  : '给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)'
+                  : '给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令,可粘贴图片)'
               }
               onChange={(e) => setDraft(e.target.value)}
+              onPaste={(e) => {
+                // 只接管图片,普通文本粘贴照旧走默认行为
+                const files = Array.from(e.clipboardData.items)
+                  .filter((it) => it.kind === 'file' && /^image\/(png|jpeg|gif|webp)$/.test(it.type))
+                  .map((it) => it.getAsFile())
+                  .filter((f): f is File => f !== null)
+                if (files.length === 0) return
+                e.preventDefault()
+                for (const f of files) {
+                  const mediaType = f.type as ImageAttachment['mediaType']
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    const url = typeof reader.result === 'string' ? reader.result : ''
+                    const data = url.slice(url.indexOf(',') + 1)
+                    if (data) setImages((list) => [...list, { mediaType, data }])
+                  }
+                  reader.readAsDataURL(f)
+                }
+              }}
               onKeyDown={(e) => {
                 // 面板开着时,上下与回车归面板 —— 否则回车会把「/rev」当消息发出去
                 if (paletteOpen && paletteRows.length > 0) {
@@ -1203,7 +1254,7 @@ export default function App(): React.JSX.Element {
               model={config?.model ?? 'default'}
               effort={config?.effort ?? 'medium'}
               busy={busy}
-              canSend={Boolean(draft.trim())}
+              canSend={Boolean(draft.trim()) || images.length > 0}
               context={context}
               usage={usage}
               contextWarnAt={CONTEXT_WARN_AT}

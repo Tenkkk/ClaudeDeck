@@ -434,7 +434,7 @@ export type ToolRow = ToolRowBase & { done?: boolean; failed?: boolean }
  * the transcript stays quiet until you reach for something.
  */
 type TranscriptEntry =
-  | { kind: 'user'; text: string; ts?: number; id?: string }
+  | { kind: 'user'; text: string; ts?: number; id?: string; images?: number }
   | { kind: 'assistant'; text: string; ts?: number; id?: string }
   | { kind: 'tool'; row: ToolRow }
   /** Claude 回答之前的思考。默认折叠 —— 想看的时候才看 */
@@ -533,6 +533,12 @@ export type ChatEvent =
 export interface PermissionReply {
   requestId: string
   allow: boolean
+}
+
+/** 粘贴进输入框的图片。base64 交给主进程拼成 image block */
+export interface ImageAttachment {
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+  data: string
 }
 
 /**
