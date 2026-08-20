@@ -532,6 +532,9 @@ function registerIpc(): void {
   ipcMain.handle('chat:mcpToggle', (_e, name: string, enabled: boolean) =>
     active?.mcpToggle(name, enabled) ?? '会话未启动',
   )
+  ipcMain.handle('chat:mcpAuth', (_e, name: string) =>
+    active?.mcpAuthenticate(name) ?? '会话未启动',
+  )
   ipcMain.handle('chat:agents', () => active?.agents() ?? [])
   ipcMain.handle('chat:account', () => active?.account() ?? null)
 

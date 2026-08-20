@@ -119,6 +119,16 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
 | `reloadPlugins` | 改完插件不必重开会话(skills 那半已接,见上表) |
 | `setMcpServers` / `setMcpPermissionModeOverride` | 会话内增删 MCP、单独收紧某个服务的权限 |
 | `reinitialize` / `seedReadState` | 断连恢复、补读状态 |
+
+两个**未公开方法**(不在 sdk.d.ts 里,经探针实证后处置):
+
+- `mcpAuthenticate(serverName)` **已接**(`/mcp` 面板 needs-auth 的「授权」)。
+  类型缺失,接的时候做了窄化,方法不在就如实报不支持。配套的
+  `mcpClearAuth`、`mcpSubmitOAuthCallbackUrl` 未接。
+- `generateSessionTitle(description, {persist})` **实证后决定不接**:这版 CLI
+  在首轮结束就自动生成标题(done 时的列表刷新会立即捡到,无事可做);
+  且 `persist:true` 写的是 **customTitle** —— 和用户手动重命名同一个字段,
+  自动调用必然相撞。不要再接。
 | `setMaxThinkingTokens` | **已弃用**,官方让改用 `options.thinking`——本项目走的就是后者,不要退回去 |
 
 ## 宿主回调只有三个

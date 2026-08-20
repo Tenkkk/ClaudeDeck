@@ -139,6 +139,8 @@ const api = {
       ipcRenderer.invoke('chat:mcpReconnect', name),
     mcpToggle: (name: string, enabled: boolean): Promise<string | null> =>
       ipcRenderer.invoke('chat:mcpToggle', name, enabled),
+    /** needs-auth 的出路:让 CLI 走该服务的授权流 */
+    mcpAuth: (name: string): Promise<string | null> => ipcRenderer.invoke('chat:mcpAuth', name),
     agents: (): Promise<AgentInfo[]> => ipcRenderer.invoke('chat:agents'),
     account: (): Promise<AccountInfo | null> => ipcRenderer.invoke('chat:account'),
     interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),

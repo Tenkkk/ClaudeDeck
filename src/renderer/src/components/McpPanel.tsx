@@ -121,6 +121,16 @@ export default function McpPanel(): React.JSX.Element {
                     </button>
 
                     <span className="mcp-actions">
+                      {/* 缺授权时重连解决不了问题 —— 授权流才是出路 */}
+                      {s.status === 'needs-auth' && (
+                        <button
+                          className="mcp-action"
+                          disabled={busy === s.name}
+                          onClick={() => void act(s.name, () => window.api.chat.mcpAuth(s.name))}
+                        >
+                          {busy === s.name ? '…' : '授权'}
+                        </button>
+                      )}
                       {(s.status === 'failed' || s.status === 'needs-auth') && (
                         <button
                           className="mcp-action"

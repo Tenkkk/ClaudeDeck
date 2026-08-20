@@ -819,6 +819,27 @@ export class ChatSession {
     }
   }
 
+  /**
+   * 让 CLI 走某个 MCP 服务的授权流 —— needs-auth 状态唯一的出路
+   * (重连解决不了缺授权)。
+   *
+   * **未公开方法**:不在 sdk.d.ts 里,但经探针实证可用 —— 控制通道真的响,
+   * 错误形状干净(「Server not found: X」)。按本项目的规矩,这类方法必须
+   * 探针过才准接;类型缺失所以做一层窄化,方法不在就如实报不支持。
+   */
+  async mcpAuthenticate(name: string): Promise<string | null> {
+    const q = this.q as unknown as {
+      mcpAuthenticate?: (serverName: string) => Promise<unknown>
+    } | null
+    if (typeof q?.mcpAuthenticate !== 'function') return '这版 SDK 不支持授权流。'
+    try {
+      await q.mcpAuthenticate(name)
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err)
+    }
+  }
+
   /** 本会话可用的子 Agent —— 原生 `/agents` */
   async agents(): Promise<AgentInfo[]> {
     if (!this.q) return []
