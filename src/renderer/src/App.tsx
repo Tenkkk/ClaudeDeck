@@ -42,12 +42,12 @@ import {
   type PermissionMode,
   type SessionListItem,
   type SlashCommandItem,
-  type ToolRow as ToolRowData,
   type TranscriptItem,
   type TurnStatus,
   type UsageInfo,
   type Versions,
 } from '../../shared/ipc.js'
+import { appendTool, replaceTool } from '../../shared/transcript.js'
 
 type Phase = 'loading' | 'onboarding' | 'projects' | 'workspace'
 
@@ -90,19 +90,11 @@ const PANEL_COMMANDS: Record<string, 'mcp' | 'agents'> = {
 /**
  * §06:Claude 会反复写 TodoWrite,同一次会话里只保留一张卡、原地更新,
  * 否则十几张待办卡会把对话冲掉。去重放在组装这一层。
+ *
+ * appendTool / replaceTool 与主进程的历史重建共用 —— 见 shared/transcript。
+ * 各写一份的话规则必然走岔:回放里待办摊开、正文与工具行顺序相反,
+ * 都是这么来的。
  */
-function appendTool(items: TranscriptItem[], row: ToolRowData): TranscriptItem[] {
-  const base =
-    row.tool === 'todo'
-      ? items.filter((i) => !(i.kind === 'tool' && i.row.tool === 'todo'))
-      : items
-  return [...base, { kind: 'tool', row }]
-}
-
-/** 结果回来时按 id 就地替换那一行,保持顺序。 */
-function replaceTool(items: TranscriptItem[], row: ToolRowData): TranscriptItem[] {
-  return items.map((i) => (i.kind === 'tool' && i.row.id === row.id ? { kind: 'tool', row } : i))
-}
 
 export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading')

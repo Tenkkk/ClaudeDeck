@@ -31,6 +31,7 @@ import {
 import { annotateSources } from './commands.js'
 import { isInjectedUserText, unexpandSlashCommand } from './history.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
+import { appendTool, replaceTool } from '../shared/transcript.js'
 import type {
   AskAnswer,
   ChatEvent,
@@ -242,6 +243,11 @@ function registerIpc(): void {
    * Rebuilds a past conversation as the same TranscriptItem[] the live stream
    * produces, so an old session renders identically to one being typed into —
    * tool rows included, not just text.
+   *
+   * 组装规则(去重、按 id 回填)与直播共用 shared/transcript;顺序也要对齐:
+   * 直播时正文在工具行到来的那一刻就落进对话流,这里必须同样在 tool_use
+   * 处截断 —— 否则同一条消息回放出来是「先工具后正文」,和直播相反,
+   * id 按内容配对也会配不上。
    */
   ipcMain.handle('sessions:history', async (_e, sessionId: string): Promise<TranscriptItem[]> => {
     const config = getConfig()
@@ -249,12 +255,13 @@ function registerIpc(): void {
       dir: config.activeWorkspace ?? undefined,
     })
 
-    const out: TranscriptItem[] = []
+    let out: TranscriptItem[] = []
     const rowsById = new Map<string, ToolRow>()
 
     interface Block {
       type?: string
       text?: string
+      thinking?: string
       id?: string
       name?: string
       input?: unknown
@@ -282,27 +289,33 @@ function registerIpc(): void {
       if (!Array.isArray(content)) continue
 
       let text = ''
+      const flushText = (): void => {
+        if (!(role === 'user' && isInjectedUserText(text))) {
+          const shown = role === 'user' ? unexpandSlashCommand(text) : text
+          if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
+        }
+        text = ''
+      }
       for (const b of content as Block[]) {
         if (b.type === 'text' && b.text) {
           text += b.text
+        } else if (b.type === 'thinking' && b.thinking) {
+          // 思考也要回放 —— 不然切走再切回,思考块全部消失
+          out.push({ kind: 'thinking', text: b.thinking })
         } else if (b.type === 'tool_use' && b.id && b.name) {
+          flushText()
           const row = rowFromToolUse(b.id, b.name, b.input)
           rowsById.set(b.id, row)
-          out.push({ kind: 'tool', row })
+          out = appendTool(out, row)
         } else if (b.type === 'tool_result' && b.tool_use_id) {
           const pending = rowsById.get(b.tool_use_id)
           if (!pending) continue
           const filled = applyToolResult(pending, raw.tool_use_result)
           rowsById.set(b.tool_use_id, filled)
-          // 就地替换 transcript 里那一条,保持顺序
-          const at = out.findIndex((i) => i.kind === 'tool' && i.row.id === b.tool_use_id)
-          if (at >= 0) out[at] = { kind: 'tool', row: filled }
+          out = replaceTool(out, filled)
         }
       }
-      // 块状内容同样要过一道注入检查 —— 工具行已在上面按块推入,不受影响
-      if (role === 'user' && isInjectedUserText(text)) continue
-      const shown = role === 'user' ? unexpandSlashCommand(text) : text
-      if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
+      flushText()
     }
 
     return out
