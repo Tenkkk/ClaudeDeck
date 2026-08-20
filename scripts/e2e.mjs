@@ -107,10 +107,14 @@ writeFileSync(
 )
 
 // 预置 .claude,让配置栏有内容可开 —— §10 的范围就是这里加根目录的 CLAUDE.md
+//
+// 预置配置里的 bypassPermissions 在启动时会被归一回「询问」(危险档不跨启动),
+// 所以工具要跑得动全靠这份 allow 规则:裸 `Bash` 放行整个工具,CLI 侧直接
+// 允许,不经宿主 —— 第 4 节的 echo 才不会撞上权限卡。
 mkdirSync(join(WORKSPACE, '.claude'), { recursive: true })
 writeFileSync(
   join(WORKSPACE, '.claude', 'settings.local.json'),
-  JSON.stringify({ permissions: { allow: ['Bash(npm run build)'], deny: [] } }, null, 2),
+  JSON.stringify({ permissions: { allow: ['Bash(npm run build)', 'Bash'], deny: [] } }, null, 2),
 )
 writeFileSync(join(WORKSPACE, 'CLAUDE.md'), '# 测试用\n')
 
@@ -171,6 +175,11 @@ try {
     projectNames.length === 1 && WORKSPACE.endsWith(projectNames[0]),
     projectNames.join(', '),
   )
+
+  // 危险档不跨启动:预置写的是 bypassPermissions,启动后必须归一回「询问」——
+  // 上次点过完全放行,这次一开机就静默放行一切,是绝不能发生的事
+  const modeChip = (await page.textContent('[data-control="permission"]')) ?? ''
+  check('完全放行不跨启动,回到询问档', modeChip.includes('询问'), modeChip.trim())
 
   // ---- 功能 1:聊天 -------------------------------------------------------
   if (want(1)) {
@@ -486,7 +495,9 @@ try {
     await page.waitForSelector('.dirty-dot', { timeout: 5_000 })
     check('改动后出现脏点', true)
     await page.keyboard.press('Control+s')
-    await page.waitForFunction(() => !document.querySelector('.dirty-dot'), { timeout: 10_000 })
+    await page.waitForFunction(() => !document.querySelector('.dirty-dot'), undefined, {
+      timeout: 10_000,
+    })
     check('Ctrl S 保存后脏点消失', true)
 
     const onDisk = readFileSync(join(WORKSPACE, '.claude', 'settings.local.json'), 'utf8')
@@ -774,6 +785,28 @@ try {
       .catch(() => null)
     check('等待时有进行中的反馈', thinkingText !== null, thinkingText?.trim())
     check('反馈里带着已用时长', /秒/.test(thinkingText ?? ''), thinkingText?.trim())
+
+    // 排队发送:回答中输入不再被吞 —— Enter 照发,消息排队等本轮答完接着处理。
+    // 回答已经先结束的话就退化成普通发送,断言照样成立,不会误报。
+    const claudeBefore = await page.$$eval('.msg-claude', (n) => n.length)
+    const usersBefore = await page.$$eval('.msg-user', (n) => n.length)
+    await page.fill('.composer textarea', '只回复两个字:排队')
+    await page.keyboard.press('Enter')
+    const queuedShown = await page
+      .waitForFunction((n) => document.querySelectorAll('.msg-user').length > n, usersBefore, {
+        timeout: 2_000,
+      })
+      .then(() => true)
+      .catch(() => false)
+    check('回答中发送没有被吞(气泡立即出现)', queuedShown, `${usersBefore} → +1`)
+    // 两轮都答完再往下走 —— settle 可能在两轮之间的空档误判
+    await page.waitForFunction(
+      (n) => document.querySelectorAll('.msg-claude').length >= n + 2,
+      claudeBefore,
+      { timeout: 120_000 },
+    )
+    check('排队的那条也得到了回答', true)
+
     await settle(page)
     const stillThinking = await page.$$eval('.thinking', (n) => n.length)
     check('答完就收起', stillThinking === 0)
@@ -838,7 +871,9 @@ try {
 
       // 作答后卡片收起,本轮继续走完
       const gone = await page
-        .waitForFunction(() => document.querySelectorAll('.ask-card').length === 0, { timeout: 30_000 })
+        .waitForFunction(() => document.querySelectorAll('.ask-card').length === 0, undefined, {
+          timeout: 30_000,
+        })
         .then(() => true)
         .catch(() => false)
       check('作答后卡片收起', gone)

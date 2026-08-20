@@ -215,14 +215,14 @@ async function send() {
  * permissionMode 是 default,所以跑工具会拦一下 —— 这本身值得录进去。
  */
 async function approveIfAsked(ms = 25_000) {
-  const card = await page.waitForSelector('.card', { timeout: ms }).catch(() => null)
+  const card = await page.waitForSelector('.permission-card', { timeout: ms }).catch(() => null)
   if (!card) return false
   await cap('工具调用会先拦下来问一次 —— 批准之后才动手')
   await beat(T.read)
-  const btn = '.card button'
+  const btn = '.permission-card button'
   await moveToEl(btn)
   await page.evaluate(() => window.__demoHit())
-  await page.evaluate(() => document.querySelector('.card button')?.click())
+  await page.evaluate(() => document.querySelector('.permission-card button')?.click())
   await beat()
   return true
 }

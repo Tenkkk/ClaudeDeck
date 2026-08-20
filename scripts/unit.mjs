@@ -9,14 +9,20 @@
 import { truncatePath, relativeTime } from '../src/renderer/src/lib/path.ts'
 import { rowFromToolUse, applyToolResult } from '../src/main/tools.ts'
 import { fieldsFromSchema, coerceValues } from '../src/main/elicit.ts'
-import { askCardFromPayload, askAnswerPatch, planCardFromPayload } from '../src/main/dialogs.ts'
+import {
+  askCardFromPayload,
+  askAnswerPatch,
+  markOtherAllowed,
+  planCardFromPayload,
+} from '../src/main/dialogs.ts'
 import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 import { bundledExecutablePath } from '../src/main/binary.ts'
 import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
 import { parseMarkdown, parseInline } from '../src/renderer/src/lib/markdown.ts'
 import { flatten } from '../src/renderer/src/lib/commands.ts'
-import { unexpandSlashCommand } from '../src/main/history.ts'
+import { unexpandSlashCommand, isInjectedUserText } from '../src/main/history.ts'
 import { resolveInProject, isEditable } from '../src/main/claudedir.ts'
+import { appendTool, replaceTool } from '../src/shared/transcript.ts'
 
 let passed = 0
 let failed = 0
@@ -115,9 +121,11 @@ console.log('\ntools —— 工具行归一化 §06')
   eq('Bash 中断标记', cut.interrupted, true)
   eq('Bash stderr', cut.stderr, 'killed')
 
-  // Edit:加删行数要从 structuredPatch 里数出来
+  // Edit:入参的 old/new 先合成预览 diff —— 批准之前就要看得见改什么;
+  // 结果回来的 structuredPatch 是权威版本,会把预览盖掉
   let edit = rowFromToolUse('t4', 'Edit', { file_path: 'a.ts', old_string: 'x', new_string: 'y' })
-  eq('Edit 请求时加删为 0', edit.tool === 'edit' && edit.added === 0 && edit.removed === 0, true)
+  eq('Edit 请求时就有预览 diff', edit.tool === 'edit' && edit.added === 1 && edit.removed === 1, true)
+  eq('Edit 预览行内容', edit.hunks[0]?.lines.join('|'), '-x|+y')
 
   edit = applyToolResult(edit, {
     structuredPatch: [
@@ -159,6 +167,41 @@ console.log('\ntools —— 工具行归一化 §06')
   eq('TodoWrite 非法状态降级为 pending', rowFromToolUse('t9', 'TodoWrite', { todos: [{ content: 'x', status: 'bogus' }] }).todos[0].status, 'pending')
   eq('Edit 结果无 structuredPatch 不抛', applyToolResult(rowFromToolUse('t10', 'Edit', {}), {}).hunks.length, 0)
   eq('Bash 结果为 null 不抛', applyToolResult(rowFromToolUse('t11', 'Bash', {}), null).interrupted, false)
+
+  // Write / MultiEdit 并入 Edit 的 diff 形态,label 标明是哪一个
+  const write = rowFromToolUse('t12', 'Write', { file_path: 'b.ts', content: 'l1\nl2\nl3' })
+  eq('Write 并入 edit 形态', write.tool === 'edit' && write.label, 'Write')
+  eq('Write 内容全算新增', write.tool === 'edit' && write.added, 3)
+  eq('Write 没有删除行', write.tool === 'edit' && write.removed, 0)
+
+  const multi = rowFromToolUse('t13', 'MultiEdit', {
+    file_path: 'c.ts',
+    edits: [
+      { old_string: 'a', new_string: 'b' },
+      { old_string: 'c\nd', new_string: 'e' },
+    ],
+  })
+  eq('MultiEdit 每处修改一个 hunk', multi.tool === 'edit' && multi.hunks.length, 2)
+  eq('MultiEdit 统计加删', multi.tool === 'edit' && multi.added === 2 && multi.removed === 3, true)
+
+  // Grep / Glob:模式 + 范围,结果回来补命中数
+  const grep = rowFromToolUse('t14', 'Grep', { pattern: 'TODO', path: 'src' })
+  eq('Grep 归入 search', grep.tool === 'search' && grep.name, 'Grep')
+  eq('Grep 保留模式与范围', grep.tool === 'search' && grep.pattern === 'TODO' && grep.path === 'src', true)
+  const grepDone = applyToolResult(grep, { mode: 'files_with_matches', numFiles: 4 })
+  eq('Grep 结果回补命中数', grepDone.tool === 'search' && grepDone.hits, 4)
+
+  // Task:不画的话,子 Agent 在界面上完全不可见
+  const task = rowFromToolUse('t15', 'Task', { description: '找出全部越界读', subagent_type: 'Explore', prompt: 'x' })
+  eq('Task 画成子 Agent 行', task.tool === 'task' && task.description, '找出全部越界读')
+  eq('Task 带上类型', task.tool === 'task' && task.agent, 'Explore')
+
+  // 成败态:tool_result 的 is_error 统一盖到行上
+  const okRead = applyToolResult(rowFromToolUse('t16', 'Read', { file_path: 'x' }), 'ok')
+  eq('结果回来盖 done', okRead.done, true)
+  eq('成功不标 failed', okRead.failed, undefined)
+  const badRead = applyToolResult(rowFromToolUse('t17', 'Read', { file_path: 'x' }), 'no such file', true)
+  eq('is_error 盖 failed', badRead.failed, true)
 }
 
 console.log('\nelicit —— MCP 表单的 schema 映射 §14')
@@ -255,6 +298,23 @@ console.log('\ndialogs —— user dialog 的 payload 归一化 §13 / §06')
 
   const freeform = askAnswerPatch(card, { answers: {}, response: '四道题都不合适' })
   eq('自由作答走 response', freeform.response, '四道题都不合适')
+
+  // 多选现在传数组 —— label 本身可以含逗号,不能再用逗号拼
+  const multiSel = askAnswerPatch(card, {
+    answers: { '这次要顺手做掉哪几件?': ['补一条 typecheck', '更新 CLAUDE.md'] },
+  })
+  eq('多选数组原样传递', Array.isArray(multiSel.answers['这次要顺手做掉哪几件?']), true)
+  eq(
+    '空数组不回传',
+    Object.keys(askAnswerPatch(card, { answers: { '这次要顺手做掉哪几件?': [] } }).answers).length,
+    0,
+  )
+
+  // isOther:「其他…」的自由文本要合法,必须给每道题打标
+  const marked = markOtherAllowed(askPayload)
+  eq('每道题打上 isOther', marked.questions.every((q) => q.isOther === true), true)
+  eq('打标不动原有字段', marked.questions[0].header, '切换失败')
+  eq('questions 不是数组时给空补丁', Object.keys(markOtherAllowed({ questions: 'nope' })).length, 0)
 
   // 认不出形状一律返回 null,交给「安全取消」—— 宁可不画也不猜着画
   eq('questions 不是数组 → null', askCardFromPayload('x', { questions: 'nope' }), null)
@@ -449,6 +509,43 @@ console.log('\n历史 —— 斜杠命令还原')
   // 认不出就原样返回,绝不吃内容
   eq('普通消息原样返回', unexpandSlashCommand('帮我看下 README'), '帮我看下 README')
   eq('半截标记原样返回', unexpandSlashCommand('<command-name>没闭合'), '<command-name>没闭合')
+}
+
+// ---- 历史里的注入记录过滤 ----------------------------------------------------
+// CLI 以 user 角色写进会话文件的自产记录,回放时不该画成用户气泡 ——
+// 每多一条幽灵气泡,其后消息的 id 就可能错位,而 id 是 rewindFiles 的靶子。
+console.log('\n历史 —— 注入记录过滤')
+{
+  eq('本地命令输出是注入', isInjectedUserText('<local-command-stdout>Set model</local-command-stdout>'), true)
+  eq('本地命令报错是注入', isInjectedUserText('<local-command-stderr>x</local-command-stderr>'), true)
+  eq(
+    '压缩接续前言是注入',
+    isInjectedUserText('This session is being continued from a previous conversation that ran out of context.'),
+    true,
+  )
+  eq('任务通知是注入', isInjectedUserText('<task-notification>done</task-notification>'), true)
+  eq('孤立 command-name 是注入', isInjectedUserText('<command-name>/x</command-name>'), true)
+  eq(
+    '命令对不是注入(用户真敲过的)',
+    isInjectedUserText('<command-name>/mcp</command-name><command-message>mcp</command-message>'),
+    false,
+  )
+  eq('普通消息不是注入', isInjectedUserText('帮我看下 README'), false)
+}
+
+// ---- 直播与回放共用的组装规则 -------------------------------------------------
+console.log('\ntranscript —— 组装规则(直播与回放共用)')
+{
+  const t1 = appendTool([], { id: 'a', tool: 'todo', todos: [{ content: 'x', status: 'pending' }] })
+  const t2 = appendTool(t1, { id: 'b', tool: 'bash', command: 'ls' })
+  const t3 = appendTool(t2, { id: 'c', tool: 'todo', todos: [{ content: 'x', status: 'completed' }] })
+  eq('TodoWrite 只留一张卡', t3.filter((i) => i.kind === 'tool' && i.row.tool === 'todo').length, 1)
+  eq('留下的是最新那张', t3.find((i) => i.kind === 'tool' && i.row.tool === 'todo')?.row.id, 'c')
+  eq('别的行不受牵连', t3.some((i) => i.kind === 'tool' && i.row.id === 'b'), true)
+
+  const t4 = replaceTool(t3, { id: 'b', tool: 'bash', command: 'ls', stdout: 'ok' })
+  eq('结果按 id 就地替换', t4.find((i) => i.kind === 'tool' && i.row.id === 'b')?.row.stdout, 'ok')
+  eq('替换不改变条数', t4.length, t3.length)
 }
 
 // ---- 文件树的路径收敛 ------------------------------------------------------
