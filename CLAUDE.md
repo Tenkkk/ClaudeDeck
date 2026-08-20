@@ -32,7 +32,9 @@
 canUseTool('AskUserQuestion', { questions: [...] })
   → { behavior:'allow', updatedInput: { ...input, answers } }
     answers 以**题干原文**为键(CLI 内部 reducer 就是 answers[questionText]),
-    值是选项 label,多选可用数组或 ", " 分隔;label 必须与选项完全一致。
+    值是选项 label,多选传数组(label 可含逗号,不要用逗号拼)。
+    题目打上 isOther: true 后自由文本也是合法作答 —— 本项目统一打上,
+    「其他…」靠它;不打的话自由文本过不了校验,模型收到「没人作答」。
     带 answers 放行 → 模型收到 "The user answered: ..."
     不带 answers 直接放行 → "The user did not answer the questions."
 

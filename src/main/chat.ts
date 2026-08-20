@@ -10,6 +10,7 @@ import { credentialEnv } from './config.js'
 import {
   askAnswerPatch,
   askCardFromPayload,
+  markOtherAllowed,
   planCardFromPayload,
   SUPPORTED_DIALOG_KINDS,
 } from './dialogs.js'
@@ -305,7 +306,8 @@ export class ChatSession {
               if (!answer) return { behavior: 'deny' as const, message: '用户没有作答。' }
               return {
                 behavior: 'allow' as const,
-                updatedInput: { ...input, ...askAnswerPatch(card, answer) },
+                // markOtherAllowed 给 questions 打 isOther,「其他…」的自由文本才合法
+                updatedInput: { ...input, ...markOtherAllowed(input), ...askAnswerPatch(card, answer) },
               }
             }
             // 认不出形状就原样放行,让 CLI 走它自己的「没人作答」默认路径。

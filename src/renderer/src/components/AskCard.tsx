@@ -23,7 +23,9 @@ export default function AskCard({
   onCancel: () => void
 }): React.JSX.Element {
   const [at, setAt] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  // 选中项一律存数组(单选就是单元素数组)—— 用逗号拼字符串的话,
+  // label 本身含逗号就会被拆错位
+  const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [otherText, setOtherText] = useState<Record<string, string>>({})
   const [noteOpen, setNoteOpen] = useState<Record<string, boolean>>({})
@@ -32,28 +34,28 @@ export default function AskCard({
   const total = card.questions.length
   const q = card.questions[at]
   const last = at === total - 1
-  const picked = answers[q.question] ?? ''
-  const chosen = picked ? picked.split(',').map((s) => s.trim()).filter(Boolean) : []
+  const chosen = answers[q.question] ?? []
 
   function choose(label: string): void {
     if (q.multiSelect) {
       const next = chosen.includes(label)
         ? chosen.filter((c) => c !== label)
         : [...chosen, label]
-      setAnswers((a) => ({ ...a, [q.question]: next.join(', ') }))
+      setAnswers((a) => ({ ...a, [q.question]: next }))
     } else {
-      setAnswers((a) => ({ ...a, [q.question]: label }))
+      setAnswers((a) => ({ ...a, [q.question]: [label] }))
     }
   }
 
   function finish(): void {
     // 「其他…」填的自由文本要替换掉那个占位标签
-    const merged: Record<string, string> = {}
+    const merged: Record<string, string | string[]> = {}
     for (const item of card.questions) {
-      const v = answers[item.question]
-      if (!v) continue
+      const arr = answers[item.question] ?? []
+      if (arr.length === 0) continue
       const extra = otherText[item.question]?.trim()
-      merged[item.question] = extra ? v.replace(OTHER, extra) : v
+      const resolved = arr.map((label) => (label === OTHER && extra ? extra : label))
+      merged[item.question] = item.multiSelect ? resolved : (resolved[0] ?? '')
     }
     onSubmit({ answers: merged, notes })
   }
@@ -100,10 +102,10 @@ export default function AskCard({
         {card.questions.map((item, i) => (
           <button
             key={item.question}
-            className={`ask-step${i === at ? ' current' : ''}${answers[item.question] ? ' done' : ''}`}
+            className={`ask-step${i === at ? ' current' : ''}${answers[item.question]?.length ? ' done' : ''}`}
             onClick={() => setAt(i)}
           >
-            {answers[item.question] && <CheckIcon size={9} />}
+            {(answers[item.question]?.length ?? 0) > 0 && <CheckIcon size={9} />}
             {item.header}
           </button>
         ))}
@@ -175,11 +177,11 @@ export default function AskCard({
 
       <div className="row">
         {last ? (
-          <button className="primary" disabled={!picked} onClick={finish}>
+          <button className="primary" disabled={chosen.length === 0} onClick={finish}>
             提交
           </button>
         ) : (
-          <button className="primary" disabled={!picked} onClick={() => setAt(at + 1)}>
+          <button className="primary" disabled={chosen.length === 0} onClick={() => setAt(at + 1)}>
             下一题
           </button>
         )}

@@ -83,19 +83,37 @@ export function planCardFromPayload(id: string, payload: unknown): PlanCard | nu
 }
 
 /**
+ * 把每道题打上 `isOther: true` —— 告诉 CLI「自由文本也是合法作答」。
+ * 不打的话,「其他…」里写的答案不匹配任何 label,校验直接拒收,
+ * 模型收到的就是「没人作答」。调用方把它并进 updatedInput
+ * (排在 askAnswerPatch 之前,questions 用打了标的版本)。
+ */
+export function markOtherAllowed(payload: unknown): Record<string, unknown> {
+  const p = (payload ?? {}) as Rec
+  if (!Array.isArray(p.questions)) return {}
+  return {
+    questions: p.questions.map((q) =>
+      q && typeof q === 'object' && !Array.isArray(q) && !('isOther' in (q as Rec))
+        ? { ...(q as Rec), isOther: true }
+        : q,
+    ),
+  }
+}
+
+/**
  * 作答要打进 `updatedInput` 的那几个字段。
  *
- * 只返回补丁,不带 `questions` —— 调用方是 `{ ...input, ...这里 }`,原样保留
- * CLI 自己给的 questions,免得我归一化过的版本把它盖掉。
+ * 只返回作答本身,不带 `questions` —— questions 由 markOtherAllowed 给,
+ * 除 isOther 外原样保留 CLI 自己的版本,免得我归一化过的把它盖掉。
  *
  * 键用**题干原文**:CLI 内部的作答 reducer 就是 `answers[questionText]`,
  * 用 header 当键的话字段收得下、校验过不了,模型照样收到「没人作答」。
  */
 export function askAnswerPatch(card: AskCard, answer: AskAnswer): Record<string, unknown> {
-  const answers: Record<string, string> = {}
+  const answers: Record<string, string | string[]> = {}
   for (const q of card.questions) {
     const v = answer.answers[q.question]
-    if (v) answers[q.question] = v
+    if (v && (typeof v === 'string' || v.length > 0)) answers[q.question] = v
   }
 
   const out: Record<string, unknown> = { answers }

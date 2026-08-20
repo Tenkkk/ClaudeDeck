@@ -271,8 +271,8 @@ export interface AskCard {
 
 /** 用户对一整套反问的作答。键是题干原文 —— 这是工具输出契约规定的。 */
 export interface AskAnswer {
-  /** 题干 → 选中的标签;多选用逗号分隔 */
-  answers: Record<string, string>
+  /** 题干 → 选中的 label;多选传数组 —— label 本身可含逗号,不能用逗号拼 */
+  answers: Record<string, string | string[]>
   /** 一道都不选,直接说一段话 */
   response?: string
   /** 每题的补充说明 */
