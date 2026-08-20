@@ -415,7 +415,7 @@ export type ToolRow =
  * `ts` drives the timestamp in the hover action row — shown on hover only, so
  * the transcript stays quiet until you reach for something.
  */
-export type TranscriptItem =
+type TranscriptEntry =
   | { kind: 'user'; text: string; ts?: number; id?: string }
   | { kind: 'assistant'; text: string; ts?: number; id?: string }
   | { kind: 'tool'; row: ToolRow }
@@ -427,6 +427,13 @@ export type TranscriptItem =
    */
   | { kind: 'mcp' }
   | { kind: 'agents' }
+
+/**
+ * `uid` 是渲染层落位时盖的稳定 key。transcript 会中段删除(TodoWrite 去重
+ * 只留最新一张),下标当 key 会让其后所有条目 remount —— 展开的输出全合上、
+ * 面板重拉。工具行用 row.id 当 key,可以不带 uid。
+ */
+export type TranscriptItem = TranscriptEntry & { uid?: number }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
 /** 与 SDK 的 SDKStatus 一致 —— 不自己另立一套状态机 */

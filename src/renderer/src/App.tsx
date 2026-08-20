@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import AskCard from './components/AskCard.js'
 import CommandPalette, { flatten } from './components/CommandPalette.js'
 import ControlBar from './components/ControlBar.js'
@@ -95,6 +95,54 @@ const PANEL_COMMANDS: Record<string, 'mcp' | 'agents'> = {
  * 各写一份的话规则必然走岔:回放里待办摊开、正文与工具行顺序相反,
  * 都是这么来的。
  */
+
+/**
+ * 给非工具条目盖稳定 key。工具行天然有 row.id;其余条目没有身份,
+ * 落位时发一个 —— 下标当 key 的话,TodoWrite 去重从中段删一条,
+ * 其后所有条目都会 remount:展开的输出全合上、面板重拉。
+ */
+let uidSeq = 0
+function stamp(item: TranscriptItem): TranscriptItem {
+  return { ...item, uid: ++uidSeq }
+}
+
+/**
+ * 历史条目单独成树并 memo。流式输出期间每个 delta 都会让 App 重渲,
+ * 而 transcript 数组在纯增量阶段并不变 —— 在这里把整棵子树剪掉,
+ * 已经画好的历史就不会跟着每个字重排一遍(打字卡顿的大头)。
+ */
+const TranscriptList = memo(function TranscriptList({
+  items,
+  onFork,
+}: {
+  items: TranscriptItem[]
+  onFork: (id: string) => void
+}): React.JSX.Element {
+  return (
+    <>
+      {items.map((item, i) =>
+        item.kind === 'tool' ? (
+          <ToolRow key={item.row.id} row={item.row} />
+        ) : item.kind === 'thinking' ? (
+          <Thought key={item.uid ?? `i${i}`} text={item.text} />
+        ) : item.kind === 'mcp' ? (
+          <McpPanel key={item.uid ?? `i${i}`} />
+        ) : item.kind === 'agents' ? (
+          <AgentsPanel key={item.uid ?? `i${i}`} />
+        ) : (
+          <Message
+            key={item.uid ?? `i${i}`}
+            role={item.kind}
+            text={item.text}
+            ts={item.ts}
+            id={item.id}
+            onFork={onFork}
+          />
+        ),
+      )}
+    </>
+  )
+})
 
 export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading')
@@ -239,6 +287,20 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     return window.api.chat.onEvent((event: ChatEvent) => {
+      /** 把攒着的思考定格落进对话流 —— 正文开口、工具插入、轮次收尾都要 */
+      const flushThinking = (): void => {
+        setThinking((t) => {
+          if (t) setTranscript((tr) => [...tr, stamp({ kind: 'thinking', text: t })])
+          return ''
+        })
+      }
+      /** 把已经流出来的正文定格 —— 工具行插在正文之间时、轮次收尾时 */
+      const flushStreaming = (): void => {
+        setStreaming((s) => {
+          if (s) setTranscript((t) => [...t, stamp({ kind: 'assistant', text: s, ts: Date.now() })])
+          return ''
+        })
+      }
       if (event.type === 'session') {
         setActiveSession(event.sessionId)
         activeSessionRef.current = event.sessionId
@@ -250,21 +312,12 @@ export default function App(): React.JSX.Element {
         setThinking((t) => t + event.text)
       } else if (event.type === 'delta') {
         // 正文一开口,思考就该定下来落进对话流 —— 它属于这一段回答之前
-        setThinking((t) => {
-          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
-          return ''
-        })
+        flushThinking()
         setStreaming((s) => s + event.text)
       } else if (event.type === 'tool') {
         // 工具行插在正文之间,所以先把已经流出来的文字定下来
-        setThinking((t) => {
-          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
-          return ''
-        })
-        setStreaming((s) => {
-          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
-          return ''
-        })
+        flushThinking()
+        flushStreaming()
         setTranscript((t) => appendTool(t, event.row))
       } else if (event.type === 'toolUpdate') {
         setTranscript((t) => replaceTool(t, event.row))
@@ -311,14 +364,8 @@ export default function App(): React.JSX.Element {
         }
       } else if (event.type === 'done') {
         // 只思考、没开口就结束的情况也要留下(比如全程在跑工具)
-        setThinking((t) => {
-          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
-          return ''
-        })
-        setStreaming((s) => {
-          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
-          return ''
-        })
+        flushThinking()
+        flushStreaming()
         setBusy(false)
         void refreshSessions()
         void refreshMeters()
@@ -327,14 +374,8 @@ export default function App(): React.JSX.Element {
       } else if (event.type === 'error') {
         // 报错也是一种收尾:半截的思考与正文要落进对话流、streaming 清空,
         // 否则下一轮的增量会接在死流的尾巴上,两轮回答拼成一条
-        setThinking((t) => {
-          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
-          return ''
-        })
-        setStreaming((s) => {
-          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
-          return ''
-        })
+        flushThinking()
+        flushStreaming()
         setError(event.message)
         setBusy(false)
       }
@@ -508,7 +549,7 @@ export default function App(): React.JSX.Element {
     const panel = PANEL_COMMANDS[text.toLowerCase()]
     if (panel) {
       setDraft('')
-      setTranscript((t) => [...t, { kind: panel }])
+      setTranscript((t) => [...t, stamp({ kind: panel })])
       return
     }
 
@@ -530,7 +571,7 @@ export default function App(): React.JSX.Element {
       const known = (sessionsByProject[ws] ?? []).some((s) => s.sessionId === activeSessionRef.current)
       if (!known) setPendingSession({ path: ws, title: text })
     }
-    setTranscript((t) => [...t, { kind: 'user', text, ts: Date.now() }])
+    setTranscript((t) => [...t, stamp({ kind: 'user', text, ts: Date.now() })])
     setBusy(true)
     setError(null)
     // 等待态的计时与计数按轮清零
@@ -832,26 +873,7 @@ export default function App(): React.JSX.Element {
             </div>
           )}
 
-          {transcript.map((item, i) =>
-            item.kind === 'tool' ? (
-              <ToolRow key={`${item.row.id}-${i}`} row={item.row} />
-            ) : item.kind === 'thinking' ? (
-              <Thought key={i} text={item.text} />
-            ) : item.kind === 'mcp' ? (
-              <McpPanel key={i} />
-            ) : item.kind === 'agents' ? (
-              <AgentsPanel key={i} />
-            ) : (
-              <Message
-                key={i}
-                role={item.kind}
-                text={item.text}
-                ts={item.ts}
-                id={item.id}
-                onFork={setForkFrom}
-              />
-            ),
-          )}
+          <TranscriptList items={transcript} onFork={setForkFrom} />
 
           {/* 正在想的那一段:自动展开,让人看着它在动 */}
           {thinking && <Thought text={thinking} live />}

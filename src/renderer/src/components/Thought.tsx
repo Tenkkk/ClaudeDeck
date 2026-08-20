@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { CaretIcon } from './Icons.js'
 
 /**
@@ -11,7 +11,7 @@ import { CaretIcon } from './Icons.js'
  * 正在思考时(live)自动展开并显示最后几行:那会儿屏幕上没有别的东西,
  * 让人看着它在动,比一个空白的「思考中」有信息量得多。
  */
-export default function Thought({ text, live }: { text: string; live?: boolean }): React.JSX.Element {
+export default memo(function Thought({ text, live }: { text: string; live?: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const show = open || live === true
 
@@ -25,7 +25,7 @@ export default function Thought({ text, live }: { text: string; live?: boolean }
       {show && <div className="thought-body">{text}</div>}
     </div>
   )
-}
+})
 
 /** 折叠时露一行 —— 让人判断值不值得展开 */
 function firstLine(text: string): string {

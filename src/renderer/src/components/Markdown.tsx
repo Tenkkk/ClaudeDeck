@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { parseMarkdown, type Block, type Inline } from '../lib/markdown.js'
 
 /**
@@ -11,7 +11,10 @@ import { parseMarkdown, type Block, type Inline } from '../lib/markdown.js'
  * 让人手选反而容易漏首尾。
  */
 export default function Markdown({ text }: { text: string }): React.JSX.Element {
-  return <div className="md">{parseMarkdown(text).map((b, i) => renderBlock(b, i))}</div>
+  // 解析只和 text 有关。不缓存的话,父组件每重渲一次就把全文重新解析一遍 ——
+  // 长会话里每个 delta 都重解析整段历史,打字就是这么卡起来的
+  const blocks = useMemo(() => parseMarkdown(text), [text])
+  return <div className="md">{blocks.map((b, i) => renderBlock(b, i))}</div>
 }
 
 function renderBlock(b: Block, key: number): React.JSX.Element {

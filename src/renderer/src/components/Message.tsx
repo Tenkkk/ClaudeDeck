@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import Markdown from './Markdown.js'
 
 /**
@@ -13,7 +13,7 @@ import Markdown from './Markdown.js'
  *
  * 「编辑并重发 ↳」「从这里重答 ↳」走 forkSession —— 见 ForkDialog(§12)。
  */
-export default function Message({
+export default memo(function Message({
   role,
   text,
   ts,
@@ -61,4 +61,4 @@ export default function Message({
       </div>
     </div>
   )
-}
+})

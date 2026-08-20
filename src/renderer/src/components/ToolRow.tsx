@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { CheckIcon } from './Icons.js'
 import type { ToolRow as Row } from '../../../shared/ipc.js'
 
@@ -11,8 +11,11 @@ const DIFF_HEAD_LINES = 8
  *
  * 默认只有一行标题;有输出的给「展开 / 收起」。stderr 与 interrupted 走
  * 警示色的左短线,但**不做成红框** —— 它是过程,不是失败。
+ *
+ * memo:row 只在结果回填时换新对象,平时流式的每个 delta 都不该让
+ * 已经画好的工具行重渲一遍。
  */
-export default function ToolRow({ row }: { row: Row }): React.JSX.Element {
+function ToolRow({ row }: { row: Row }): React.JSX.Element {
   if (row.tool === 'read') {
     return (
       <div className="tool-row">
@@ -151,3 +154,5 @@ function TodoCard({ row }: { row: Extract<Row, { tool: 'todo' }> }): React.JSX.E
     </div>
   )
 }
+
+export default memo(ToolRow)
