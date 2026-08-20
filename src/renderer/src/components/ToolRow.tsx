@@ -22,6 +22,43 @@ function ToolRow({ row }: { row: Row }): React.JSX.Element {
         <span className="tool-name">Read</span>
         <span className="tool-sep">·</span>
         <span className="tool-arg">{row.path}</span>
+        {row.failed && <span className="tool-fail">失败</span>}
+      </div>
+    )
+  }
+
+  if (row.tool === 'search') {
+    return (
+      <div className="tool-row">
+        <span className="tool-name">{row.name}</span>
+        <span className="tool-sep">·</span>
+        <span className="tool-arg">{row.pattern}</span>
+        {row.path && (
+          <>
+            <span className="tool-sep">·</span>
+            <span className="tool-arg">{row.path}</span>
+          </>
+        )}
+        {typeof row.hits === 'number' && <span className="tool-hits">{row.hits} 个命中</span>}
+        {row.failed && <span className="tool-fail">失败</span>}
+      </div>
+    )
+  }
+
+  // 子 Agent 必须画出来 —— 不画的话,它在界面上唯一的痕迹是「卡了很久」
+  if (row.tool === 'task') {
+    return (
+      <div className="tool-row">
+        <span className="tool-name">子 Agent</span>
+        {row.agent && (
+          <>
+            <span className="tool-sep">·</span>
+            <span className="tool-arg">{row.agent}</span>
+          </>
+        )}
+        <span className="tool-sep">·</span>
+        <span className="tool-arg">{row.description}</span>
+        {row.failed && <span className="tool-fail">失败</span>}
       </div>
     )
   }
@@ -33,6 +70,7 @@ function ToolRow({ row }: { row: Row }): React.JSX.Element {
   return (
     <div className="tool-row">
       <span className="tool-name">{row.name}</span>
+      {row.failed && <span className="tool-fail">失败</span>}
     </div>
   )
 }
@@ -41,7 +79,7 @@ function BashRow({ row }: { row: Extract<Row, { tool: 'bash' }> }): React.JSX.El
   const [open, setOpen] = useState(false)
   const output = [row.stdout, row.stderr].filter(Boolean).join('\n').trimEnd()
   const hasOutput = output.length > 0
-  const warn = row.interrupted === true || Boolean(row.stderr?.trim())
+  const warn = row.interrupted === true || Boolean(row.stderr?.trim()) || row.failed === true
 
   /*
    * 多行命令必须整段摊开。
@@ -89,13 +127,14 @@ function EditRow({ row }: { row: Extract<Row, { tool: 'edit' }> }): React.JSX.El
   const shown = truncated ? lines.slice(0, DIFF_HEAD_LINES) : lines
 
   return (
-    <div className="tool-block">
+    <div className={`tool-block${row.failed ? ' warn' : ''}`}>
       <div className="tool-row">
-        <span className="tool-name">Edit</span>
+        <span className="tool-name">{row.label ?? 'Edit'}</span>
         <span className="tool-sep">·</span>
         <span className="tool-arg">{row.path}</span>
         {row.added > 0 && <span className="diff-add-count">+{row.added}</span>}
         {row.removed > 0 && <span className="diff-del-count">−{row.removed}</span>}
+        {row.failed && <span className="tool-fail">失败</span>}
         {lines.length > 0 && (
           <button className="tool-toggle" onClick={() => setOpen((v) => !v)}>
             {open ? '收起' : '展开'}

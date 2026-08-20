@@ -266,6 +266,7 @@ function registerIpc(): void {
       name?: string
       input?: unknown
       tool_use_id?: string
+      is_error?: boolean
     }
     interface Msg {
       uuid?: string
@@ -310,7 +311,7 @@ function registerIpc(): void {
         } else if (b.type === 'tool_result' && b.tool_use_id) {
           const pending = rowsById.get(b.tool_use_id)
           if (!pending) continue
-          const filled = applyToolResult(pending, raw.tool_use_result)
+          const filled = applyToolResult(pending, raw.tool_use_result, b.is_error === true)
           rowsById.set(b.tool_use_id, filled)
           out = replaceTool(out, filled)
         }

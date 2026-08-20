@@ -521,7 +521,7 @@ export class ChatSession {
         if (block.type !== 'tool_result') continue
         const pending = this.toolRows.get(block.tool_use_id)
         if (!pending) continue
-        const filled = applyToolResult(pending, msg.tool_use_result)
+        const filled = applyToolResult(pending, msg.tool_use_result, block.is_error === true)
         this.toolRows.set(block.tool_use_id, filled)
         this.emit({ type: 'toolUpdate', row: filled })
       }

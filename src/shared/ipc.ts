@@ -393,8 +393,11 @@ export interface TodoItem {
  * The SDK's tool inputs and outputs are shaped per tool; flattening them here
  * in the main process keeps that knowledge in one place and lets the renderer
  * render rows without knowing anything about the SDK.
+ *
+ * `done`/`failed` 由结果回填统一盖上:没有它们,read / search / task 这类
+ * 行在界面上永远看不出成败。
  */
-export type ToolRow =
+type ToolRowBase =
   | { id: string; tool: 'read'; path: string }
   | {
       id: string
@@ -405,9 +408,24 @@ export type ToolRow =
       stderr?: string
       interrupted?: boolean
     }
-  | { id: string; tool: 'edit'; path: string; added: number; removed: number; hunks: DiffHunk[] }
+  /** Edit / Write / MultiEdit 共用 diff 形态,`label` 标明是哪一个 */
+  | {
+      id: string
+      tool: 'edit'
+      label?: 'Edit' | 'Write' | 'MultiEdit'
+      path: string
+      added: number
+      removed: number
+      hunks: DiffHunk[]
+    }
   | { id: string; tool: 'todo'; todos: TodoItem[] }
+  /** Grep / Glob:模式 + 范围,结果回来补命中文件数 */
+  | { id: string; tool: 'search'; name: 'Grep' | 'Glob'; pattern: string; path?: string; hits?: number }
+  /** Task 子 Agent:不画出来的话,子 Agent 在界面上完全不可见 */
+  | { id: string; tool: 'task'; description: string; agent?: string }
   | { id: string; tool: 'other'; name: string }
+
+export type ToolRow = ToolRowBase & { done?: boolean; failed?: boolean }
 
 /**
  * One entry in the transcript, in the order it happened.

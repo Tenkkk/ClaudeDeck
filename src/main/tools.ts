@@ -18,6 +18,37 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined
 }
 
+/** 从 old/new 文本合成一个 diff hunk —— 结果还没回来时的预览,权限卡也用它 */
+function hunkFromStrings(oldText: string, newText: string): DiffHunk | null {
+  const oldLines = oldText ? oldText.split('\n') : []
+  const newLines = newText ? newText.split('\n') : []
+  if (oldLines.length === 0 && newLines.length === 0) return null
+  return {
+    oldStart: 1,
+    oldLines: oldLines.length,
+    newStart: 1,
+    newLines: newLines.length,
+    lines: [...oldLines.map((l) => `-${l}`), ...newLines.map((l) => `+${l}`)],
+  }
+}
+
+function editRow(
+  id: string,
+  label: 'Edit' | 'Write' | 'MultiEdit',
+  path: string,
+  hunks: DiffHunk[],
+): ToolRow {
+  let added = 0
+  let removed = 0
+  for (const h of hunks) {
+    for (const line of h.lines) {
+      if (line.startsWith('+')) added++
+      else if (line.startsWith('-')) removed++
+    }
+  }
+  return { id, tool: 'edit', label, path, added, removed, hunks }
+}
+
 /** 请求发出时就知道的部分。结果还没回来。 */
 export function rowFromToolUse(id: string, name: string, input: unknown): ToolRow {
   const arg = (input ?? {}) as Rec
@@ -34,9 +65,50 @@ export function rowFromToolUse(id: string, name: string, input: unknown): ToolRo
         description: str(arg.description),
       }
 
-    case 'Edit':
-      // 加删行数与 hunk 要等结果里的 structuredPatch,这里先占位
-      return { id, tool: 'edit', path: str(arg.file_path) ?? '', added: 0, removed: 0, hunks: [] }
+    /*
+     * Edit / Write / MultiEdit 都从入参先合成预览 diff:批准之前就要看得见
+     * 会改什么(权限卡直接复用这一行)。结果回来后 structuredPatch 是
+     * 权威版本,会把预览替换掉。
+     */
+    case 'Edit': {
+      const hunk = hunkFromStrings(str(arg.old_string) ?? '', str(arg.new_string) ?? '')
+      return editRow(id, 'Edit', str(arg.file_path) ?? '', hunk ? [hunk] : [])
+    }
+
+    case 'Write': {
+      const content = str(arg.content) ?? ''
+      const hunk = hunkFromStrings('', content)
+      return editRow(id, 'Write', str(arg.file_path) ?? '', hunk ? [hunk] : [])
+    }
+
+    case 'MultiEdit': {
+      const edits = Array.isArray(arg.edits) ? arg.edits : []
+      const hunks = edits.flatMap((e) => {
+        const item = (e ?? {}) as Rec
+        const hunk = hunkFromStrings(str(item.old_string) ?? '', str(item.new_string) ?? '')
+        return hunk ? [hunk] : []
+      })
+      return editRow(id, 'MultiEdit', str(arg.file_path) ?? '', hunks)
+    }
+
+    case 'Grep':
+    case 'Glob':
+      return {
+        id,
+        tool: 'search',
+        name,
+        pattern: str(arg.pattern) ?? '',
+        path: str(arg.path),
+      }
+
+    // 不画的话,子 Agent 在界面上完全不可见 —— 只知道「卡了很久」
+    case 'Task':
+      return {
+        id,
+        tool: 'task',
+        description: str(arg.description) ?? str(arg.prompt)?.slice(0, 80) ?? '',
+        agent: str(arg.subagent_type),
+      }
 
     case 'TodoWrite': {
       const raw = Array.isArray(arg.todos) ? arg.todos : []
@@ -59,13 +131,19 @@ export function rowFromToolUse(id: string, name: string, input: unknown): ToolRo
   }
 }
 
-/** 结果回来后补全同一行。返回新对象,调用方按 id 替换。 */
-export function applyToolResult(row: ToolRow, result: unknown): ToolRow {
+/**
+ * 结果回来后补全同一行。返回新对象,调用方按 id 替换。
+ * `isError` 来自 tool_result 块的 is_error —— 成败态所有行统一盖。
+ */
+export function applyToolResult(row: ToolRow, result: unknown, isError = false): ToolRow {
   const out = (result ?? {}) as Rec
+  const flags: { done: boolean; failed?: boolean } = { done: true }
+  if (isError) flags.failed = true
 
   if (row.tool === 'bash') {
     return {
       ...row,
+      ...flags,
       stdout: str(out.stdout),
       stderr: str(out.stderr),
       interrupted: out.interrupted === true,
@@ -74,6 +152,9 @@ export function applyToolResult(row: ToolRow, result: unknown): ToolRow {
 
   if (row.tool === 'edit') {
     const patch = Array.isArray(out.structuredPatch) ? out.structuredPatch : []
+    // 结果不带 patch(纯新建之类)就保留入参合成的预览,别把它抹成空
+    if (patch.length === 0) return { ...row, ...flags }
+
     const hunks: DiffHunk[] = []
     let added = 0
     let removed = 0
@@ -95,8 +176,18 @@ export function applyToolResult(row: ToolRow, result: unknown): ToolRow {
       })
     }
 
-    return { ...row, added, removed, hunks }
+    return { ...row, ...flags, added, removed, hunks }
   }
 
-  return row
+  if (row.tool === 'search') {
+    const hits =
+      typeof out.numFiles === 'number'
+        ? out.numFiles
+        : typeof out.numMatches === 'number'
+          ? out.numMatches
+          : undefined
+    return { ...row, ...flags, hits }
+  }
+
+  return { ...row, ...flags }
 }

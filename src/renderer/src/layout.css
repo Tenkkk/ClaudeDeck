@@ -1900,6 +1900,20 @@ kbd,
   font-size: var(--text-mono-m);
 }
 
+/* 结果回填盖上的失败态 —— 过程行没有成败,批准过的操作挂了要看得出来 */
+.tool-fail {
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+}
+
+/* Grep / Glob 的命中数 */
+.tool-hits {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+}
+
 .diff {
   margin: var(--s6) 0 0 22px;
   border: 1px solid var(--border);
