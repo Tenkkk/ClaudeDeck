@@ -40,8 +40,8 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
   → allow 即批准计划;deny 的 message 会回到模型那里
 ```
 
-**这两个分支必须排在 `alwaysAllow` 检查之前** ——「本次会话内不再问」说的是
-权限,不能把一个提问也一并跳过。
+**这两个分支必须排在自动放行逻辑之前**(acceptEdits、会话级规则都算)——
+自动放行说的是权限,不能把一个提问也一并跳过。
 
 ### 我原先错在哪(值得记下来)
 

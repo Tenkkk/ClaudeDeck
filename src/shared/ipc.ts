@@ -447,8 +447,21 @@ export type ChatEvent =
   | { type: 'tool'; row: ToolRow }
   /** The same row again once its result arrived — replace by `row.id`. */
   | { type: 'toolUpdate'; row: ToolRow }
-  /** `target` 是这次调用最该被看见的那个参数(文件路径 / 命令),已在主进程取好。 */
-  | { type: 'permission'; requestId: string; toolName: string; target?: string }
+  /**
+   * 一次权限请求。`target` 是这次调用最该被看见的那个参数(文件路径 / 命令);
+   * `title`/`description` 是 CLI 桥接层已经写好的整句提示,有就直接用,
+   * 不再自己拼;`ruleSummary` 是「本次会话内不再问」将放行的范围
+   * (如 `Bash(ls:*)`)—— **没有它就不该出现那颗按钮**。
+   */
+  | {
+      type: 'permission'
+      requestId: string
+      toolName: string
+      target?: string
+      title?: string
+      description?: string
+      ruleSummary?: string
+    }
   /** MCP 服务要你填一张表 · §14 */
   | { type: 'elicitation'; card: ElicitationCard }
   /** Claude 反问你 · §13 */
@@ -471,6 +484,11 @@ export type ChatEvent =
   | { type: 'progress'; outputTokens: number }
   | { type: 'done' }
   | { type: 'error'; message: string }
+  /**
+   * 撤下一张还没被作答的交互卡。上游(打断、超时)取消了对应的请求时发出 ——
+   * 请求已经死了,卡留在界面上点了也只是 no-op,必须收走。
+   */
+  | { type: 'dismiss'; card: 'permission' | 'ask' | 'plan' | 'elicitation'; id: string }
 
 export interface PermissionReply {
   requestId: string

@@ -1,4 +1,10 @@
-import { query, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import {
+  query,
+  type PermissionUpdate,
+  type Query,
+  type SDKMessage,
+  type SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk'
 import { resolveClaudeExecutable } from './binary.js'
 import { credentialEnv } from './config.js'
 import {
@@ -85,9 +91,7 @@ export interface StartOptions {
  */
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit'])
 
-let permissionSeq = 0
 let elicitSeq = 0
-let dialogSeq = 0
 
 /**
  * 权限卡上要显示的那个参数。工具不同,最该被看见的东西也不同:
@@ -109,11 +113,17 @@ function permissionTarget(input: unknown): string | undefined {
 export class ChatSession {
   private inbox = new Inbox()
   private q: Query | null = null
-  private pendingPermissions = new Map<string, (allow: boolean) => void>()
+  /**
+   * requestId(= tool_use id)→ 把用户的决定送回 canUseTool 的 settle。
+   * 「不再问」不再由本地集合兜着 —— 放行范围随 allow 一起以
+   * `updatedPermissions` 交给 CLI,按它的会话级规则生效(见 canUseTool)。
+   */
+  private pendingPermissions = new Map<
+    string,
+    (d: { allow: boolean; remember: boolean }) => void
+  >()
   /** tool_use_id → 已发出的行,结果回来时按 id 补全。 */
   private toolRows = new Map<string, ToolRow>()
-  /** 勾过「本次会话内不再问」的工具名。换会话即失效。 */
-  private alwaysAllow = new Set<string>()
   /** 后台任务第一次被看见的时刻 —— SDK 的推送里没有时间,只能自己记 */
   private taskSince = new Map<string, number>()
   /** 本轮累计的输出 token,每次 send 清零 */
@@ -188,11 +198,27 @@ export class ChatSession {
 
         // MCP 服务要你填表 · §14。requestedSchema 是标准 JSON Schema,
         // 所以这里能写通用渲染器。
-        onElicitation: async (request) => {
+        onElicitation: async (request, { signal }) => {
           const id = `elicit-${++elicitSeq}`
           const fields = fieldsFromSchema(request.requestedSchema)
           const answer = await new Promise<Record<string, string | boolean> | null>((resolve) => {
-            this.pendingElicitations.set(id, { resolve, fields })
+            const settle = (v: Record<string, string | boolean> | null): void => {
+              signal.removeEventListener('abort', onAbort)
+              resolve(v)
+            }
+            // 上游取消(打断、超时)时这张表已经没人收了:收卡、按取消结账。
+            // 不 settle 的话这个 Promise 会永远悬着。
+            const onAbort = (): void => {
+              this.pendingElicitations.delete(id)
+              this.emit({ type: 'dismiss', card: 'elicitation', id })
+              settle(null)
+            }
+            if (signal.aborted) {
+              resolve(null)
+              return
+            }
+            signal.addEventListener('abort', onAbort, { once: true })
+            this.pendingElicitations.set(id, { resolve: settle, fields })
             this.emit({
               type: 'elicitation',
               card: {
@@ -219,7 +245,7 @@ export class ChatSession {
           this.emit({ type: 'unknownDialog', notice: { dialogKind: request.dialogKind } })
           return { behavior: 'cancelled' }
         },
-        canUseTool: async (toolName, input) => {
+        canUseTool: async (toolName, input, opts) => {
           /*
            * 下面两个工具**不是权限请求**,只是借了 canUseTool 这条通道:
            * 它们是「Claude 在问你」,答复本身就是工具的结果。
@@ -230,18 +256,36 @@ export class ChatSession {
            * canUseTool,而不是 onUserDialog;直接放行的话工具就在无人作答的
            * 情况下跑完,模型收到一句 "The user did not answer the questions."
            *
-           * 所以这两个分支必须排在 alwaysAllow 前面 —— 「本次会话内不再问」
-           * 说的是权限,不能把一个提问也一并跳过。
+           * 所以这两个分支必须排在权限放行逻辑前面 —— 自动放行说的是权限,
+           * 不能把一个提问也一并跳过。
+           *
+           * 交互身份一律用 opts.toolUseID(同一条助手消息里各调用互不相同)。
+           * 每张卡都要接住 opts.signal:打断时 CLI 已经撤回了这次请求,
+           * 挂着的 Promise 必须 settle、界面上的卡必须收走 —— 否则一次打断
+           * 就留下一张点了没反应的死卡。
            */
 
           // Claude 反问你 · §13。答案通过 updatedInput.answers 回去,
           // 键是**题干原文**(CLI 自己的 reducer 就是这么存的)。
           if (toolName === 'AskUserQuestion') {
-            const id = `ask-${++dialogSeq}`
-            const card = askCardFromPayload(id, input)
+            const card = askCardFromPayload(opts.toolUseID, input)
             if (card) {
               const answer = await new Promise<AskAnswer | null>((resolve) => {
-                this.pendingAsks.set(id, resolve)
+                const settle = (v: AskAnswer | null): void => {
+                  opts.signal.removeEventListener('abort', onAbort)
+                  resolve(v)
+                }
+                const onAbort = (): void => {
+                  this.pendingAsks.delete(card.id)
+                  this.emit({ type: 'dismiss', card: 'ask', id: card.id })
+                  settle(null)
+                }
+                if (opts.signal.aborted) {
+                  resolve(null)
+                  return
+                }
+                opts.signal.addEventListener('abort', onAbort, { once: true })
+                this.pendingAsks.set(card.id, settle)
                 this.emit({ type: 'ask', card })
               })
               // 放弃作答就照实说,不要伪造一个选项
@@ -251,27 +295,38 @@ export class ChatSession {
                 updatedInput: { ...input, ...askAnswerPatch(card, answer) },
               }
             }
-            // 认不出形状就原样放行,让 CLI 走它自己的「没人作答」默认路径
+            // 认不出形状就原样放行,让 CLI 走它自己的「没人作答」默认路径。
+            // 掉到下面变成一张「Claude 想使用 AskUserQuestion」的权限卡毫无意义。
+            return { behavior: 'allow' as const, updatedInput: input }
           }
 
           // 计划卡 · §06。input 是 { plan, planFilePath },批准与否就是 allow/deny。
+          // 认不出形状时不放行 —— 掉到权限卡,让人裁决,总好过替人点头。
           if (toolName === 'ExitPlanMode') {
-            const id = `plan-${++dialogSeq}`
-            const card = planCardFromPayload(id, input)
+            const card = planCardFromPayload(opts.toolUseID, input)
             if (card) {
               const accepted = await new Promise<boolean>((resolve) => {
-                this.pendingPlans.set(id, resolve)
+                const settle = (v: boolean): void => {
+                  opts.signal.removeEventListener('abort', onAbort)
+                  resolve(v)
+                }
+                const onAbort = (): void => {
+                  this.pendingPlans.delete(card.id)
+                  this.emit({ type: 'dismiss', card: 'plan', id: card.id })
+                  settle(false)
+                }
+                if (opts.signal.aborted) {
+                  resolve(false)
+                  return
+                }
+                opts.signal.addEventListener('abort', onAbort, { once: true })
+                this.pendingPlans.set(card.id, settle)
                 this.emit({ type: 'plan', card })
               })
               return accepted
                 ? { behavior: 'allow' as const, updatedInput: input }
                 : { behavior: 'deny' as const, message: '用户还不想按这个计划开始。' }
             }
-          }
-
-          // 用户勾过「本次会话内不再问」的工具直接放行,不再打断
-          if (this.alwaysAllow.has(toolName)) {
-            return { behavior: 'allow' as const, updatedInput: input }
           }
 
           /*
@@ -285,19 +340,61 @@ export class ChatSession {
           if (this.permissionMode === 'acceptEdits' && EDIT_TOOLS.has(toolName)) {
             return { behavior: 'allow' as const, updatedInput: input }
           }
-          const requestId = `perm-${++permissionSeq}`
-          const allowed = await new Promise<boolean>((resolve) => {
-            this.pendingPermissions.set(requestId, resolve)
+
+          /*
+           * 「本次会话内不再问」的作用域来自 CLI 的规则建议(opts.suggestions),
+           * 不再按工具名放行 —— 按名字放行意味着批准过一次 `ls` 之后,任何
+           * Bash 命令(包括 rm -rf)都静默通过。只采纳带真实 ruleContent 的
+           * 规则建议;目的地一律收敛成 session:按钮上写的就是「本次会话内」,
+           * 绝不落进用户的 settings 文件。凑不出作用域就不给那颗按钮。
+           */
+          const updates: PermissionUpdate[] = (opts.suggestions ?? []).flatMap((s) => {
+            if (s.type !== 'addRules' && s.type !== 'replaceRules') return []
+            const rules = s.rules.filter((r) => r.toolName.trim() && r.ruleContent?.trim())
+            if (rules.length === 0) return []
+            return [{ ...s, rules, behavior: 'allow' as const, destination: 'session' as const }]
+          })
+          const ruleSummary = updates
+            .flatMap((u) => (u.type === 'addRules' || u.type === 'replaceRules' ? u.rules : []))
+            .map((r) => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName))
+            .join('、')
+
+          const requestId = opts.toolUseID
+          const decision = await new Promise<{ allow: boolean; remember: boolean }>((resolve) => {
+            const settle = (v: { allow: boolean; remember: boolean }): void => {
+              opts.signal.removeEventListener('abort', onAbort)
+              resolve(v)
+            }
+            const onAbort = (): void => {
+              this.pendingPermissions.delete(requestId)
+              this.emit({ type: 'dismiss', card: 'permission', id: requestId })
+              settle({ allow: false, remember: false })
+            }
+            if (opts.signal.aborted) {
+              resolve({ allow: false, remember: false })
+              return
+            }
+            opts.signal.addEventListener('abort', onAbort, { once: true })
+            this.pendingPermissions.set(requestId, settle)
             this.emit({
               type: 'permission',
               requestId,
               toolName,
               target: permissionTarget(input),
+              // 桥接层已经写好的整句提示与副标题,有就直送,渲染层不再自己拼
+              title: opts.title,
+              description: opts.description,
+              ruleSummary: ruleSummary || undefined,
             })
           })
-          return allowed
-            ? { behavior: 'allow' as const, updatedInput: input }
-            : { behavior: 'deny' as const, message: '用户拒绝了此操作。' }
+          if (!decision.allow) {
+            return { behavior: 'deny' as const, message: '用户拒绝了此操作。' }
+          }
+          return {
+            behavior: 'allow' as const,
+            updatedInput: input,
+            ...(decision.remember && updates.length > 0 ? { updatedPermissions: updates } : {}),
+          }
         },
       },
     })
@@ -463,10 +560,6 @@ export class ChatSession {
     })
   }
 
-  /**
-   * `remember` 对应卡片右下角的「本次会话内不再问 X」。只在允许时有意义,
-   * 且只作用于当前这个 ChatSession —— 换会话就重新问。
-   */
   /** `answer` 为 null 表示用户放弃作答。 */
   answerAsk(id: string, answer: AskAnswer | null): void {
     const resolve = this.pendingAsks.get(id)
@@ -490,12 +583,16 @@ export class ChatSession {
     pending.resolve(values)
   }
 
-  answerPermission(requestId: string, allow: boolean, remember = false, toolName?: string): void {
-    const resolve = this.pendingPermissions.get(requestId)
-    if (!resolve) return
+  /**
+   * `remember` 对应卡片上的「本次会话内不再问」。为真时,canUseTool 会把
+   * 会话级的规则更新(updatedPermissions)随 allow 一起交给 CLI ——
+   * 作用域是那几条规则,不是整个工具名;换会话即失效。
+   */
+  answerPermission(requestId: string, allow: boolean, remember = false): void {
+    const settle = this.pendingPermissions.get(requestId)
+    if (!settle) return
     this.pendingPermissions.delete(requestId)
-    if (allow && remember && toolName) this.alwaysAllow.add(toolName)
-    resolve(allow)
+    settle({ allow, remember })
   }
 
   async setModel(model: string): Promise<void> {
@@ -692,7 +789,7 @@ export class ChatSession {
   dispose(immediate = false): void {
     if (this.disposed) return
     this.disposed = true
-    for (const resolve of this.pendingPermissions.values()) resolve(false)
+    for (const settle of this.pendingPermissions.values()) settle({ allow: false, remember: false })
     this.pendingPermissions.clear()
     for (const p of this.pendingElicitations.values()) p.resolve(null)
     this.pendingElicitations.clear()

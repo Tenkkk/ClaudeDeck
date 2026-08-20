@@ -140,13 +140,8 @@ const api = {
     setEffort: (effort: EffortLevel): Promise<void> => ipcRenderer.invoke('chat:setEffort', effort),
     setPermissionMode: (mode: PermissionMode): Promise<void> =>
       ipcRenderer.invoke('chat:setPermissionMode', mode),
-    respondPermission: (
-      requestId: string,
-      allow: boolean,
-      remember = false,
-      toolName?: string,
-    ): Promise<void> =>
-      ipcRenderer.invoke('chat:permission', requestId, allow, remember, toolName),
+    respondPermission: (requestId: string, allow: boolean, remember = false): Promise<void> =>
+      ipcRenderer.invoke('chat:permission', requestId, allow, remember),
     onEvent: (handler: (event: ChatEvent) => void): (() => void) => {
       const listener = (_e: unknown, event: ChatEvent): void => handler(event)
       ipcRenderer.on('chat:event', listener)

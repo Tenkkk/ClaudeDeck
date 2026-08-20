@@ -55,6 +55,11 @@ interface PendingPermission {
   requestId: string
   toolName: string
   target?: string
+  /** 桥接层写好的整句提示("Claude wants to read foo.txt"),有就用它当标题 */
+  title?: string
+  description?: string
+  /** 「本次会话内不再问」将放行的范围,如 `Bash(ls:*)`。没有就不出那颗按钮 */
+  ruleSummary?: string
 }
 
 /** 上下文过 80% 转警示色 —— 自动压缩唯一的预告 · §06 */
@@ -115,11 +120,17 @@ export default function App(): React.JSX.Element {
   const [context, setContext] = useState<ContextUsage | null>(null)
   const [versions, setVersions] = useState<Versions | null>(null)
   const [account, setAccount] = useState<AccountInfo | null>(null)
-  const [permission, setPermission] = useState<PendingPermission | null>(null)
-  const [elicitation, setElicitation] = useState<ElicitationCardData | null>(null)
+  /*
+   * 四种交互卡都是**队列**,不是单槽。SDK 会并发扇出工具调用,两张权限卡
+   * 可以同时在路上 —— 单槽意味着第二张把第一张顶掉,被顶掉那张的 Promise
+   * 在主进程里永远没人 resolve,整轮就死锁在那里。队列一次画一张,
+   * 答完一张顶上下一张。
+   */
+  const [permissions, setPermissions] = useState<PendingPermission[]>([])
+  const [elicitations, setElicitations] = useState<ElicitationCardData[]>([])
   const [unknownDialog, setUnknownDialog] = useState<string | null>(null)
-  const [ask, setAsk] = useState<AskCardData | null>(null)
-  const [plan, setPlan] = useState<PlanCardData | null>(null)
+  const [asks, setAsks] = useState<AskCardData[]>([])
+  const [plans, setPlans] = useState<PlanCardData[]>([])
   const [menu, setMenu] = useState<{
     session: SessionListItem
     at: { x: number; y: number }
@@ -256,11 +267,11 @@ export default function App(): React.JSX.Element {
       } else if (event.type === 'toolUpdate') {
         setTranscript((t) => replaceTool(t, event.row))
       } else if (event.type === 'elicitation') {
-        setElicitation(event.card)
+        setElicitations((q) => (q.some((c) => c.id === event.card.id) ? q : [...q, event.card]))
       } else if (event.type === 'ask') {
-        setAsk(event.card)
+        setAsks((q) => (q.some((c) => c.id === event.card.id) ? q : [...q, event.card]))
       } else if (event.type === 'plan') {
-        setPlan(event.card)
+        setPlans((q) => (q.some((c) => c.id === event.card.id) ? q : [...q, event.card]))
       } else if (event.type === 'tasks') {
         setTasks(event.tasks)
       } else if (event.type === 'status') {
@@ -270,11 +281,32 @@ export default function App(): React.JSX.Element {
       } else if (event.type === 'unknownDialog') {
         setUnknownDialog(event.notice.dialogKind)
       } else if (event.type === 'permission') {
-        setPermission({
-          requestId: event.requestId,
-          toolName: event.toolName,
-          target: event.target,
-        })
+        setPermissions((q) =>
+          q.some((p) => p.requestId === event.requestId)
+            ? q
+            : [
+                ...q,
+                {
+                  requestId: event.requestId,
+                  toolName: event.toolName,
+                  target: event.target,
+                  title: event.title,
+                  description: event.description,
+                  ruleSummary: event.ruleSummary,
+                },
+              ],
+        )
+      } else if (event.type === 'dismiss') {
+        // 请求在上游被取消(打断、超时),这张卡点了也没人听 —— 收走
+        if (event.card === 'permission') {
+          setPermissions((q) => q.filter((p) => p.requestId !== event.id))
+        } else if (event.card === 'ask') {
+          setAsks((q) => q.filter((c) => c.id !== event.id))
+        } else if (event.card === 'plan') {
+          setPlans((q) => q.filter((c) => c.id !== event.id))
+        } else {
+          setElicitations((q) => q.filter((c) => c.id !== event.id))
+        }
       } else if (event.type === 'done') {
         // 只思考、没开口就结束的情况也要留下(比如全程在跑工具)
         setThinking((t) => {
@@ -591,6 +623,12 @@ export default function App(): React.JSX.Element {
     ? (sidebarSessions[config.activeWorkspace] ?? [])
     : []
 
+  // 交互卡各队列只画队头 —— 答完一张,下一张自己顶上来
+  const permission = permissions[0] ?? null
+  const ask = asks[0] ?? null
+  const plan = plans[0] ?? null
+  const elicitation = elicitations[0] ?? null
+
   /** 中栏开着没有 —— 树和文件都算 */
   const midOpen = openFile !== null || filesProject !== null
   const projectNameOf = (path: string): string =>
@@ -831,21 +869,34 @@ export default function App(): React.JSX.Element {
           )}
 
           {/* §06 权限卡:行内、不弹窗 —— 弹窗会把上文遮住,而你要看的正是上文。
-              陶土左条 = 在拦你(计划卡是沙绿左条 = 在等你满意)。 */}
+              陶土左条 = 在拦你(计划卡是沙绿左条 = 在等你满意)。
+              标题优先用桥接层写好的整句(title),没有才自己拼;
+              「不再问」按 ruleSummary 的范围走,凑不出范围就没有这颗按钮。 */}
           {permission && (
             <div className="permission-card">
-              <div className="card-label">等待你决定</div>
-              <div className="card-title">
-                Claude 想使用 {permission.toolName}
-                {permission.target && <strong className="card-target">{permission.target}</strong>}
+              <div className="card-label">
+                等待你决定
+                {permissions.length > 1 && ` · 还有 ${permissions.length - 1} 个在排队`}
               </div>
-              <div className="hint">在你点下之前,对话停在这里。</div>
+              <div className="card-title">
+                {permission.title ? (
+                  permission.title
+                ) : (
+                  <>
+                    Claude 想使用 {permission.toolName}
+                    {permission.target && (
+                      <strong className="card-target">{permission.target}</strong>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="hint">{permission.description ?? '在你点下之前,对话停在这里。'}</div>
               <div className="row">
                 <button
                   className="primary"
                   onClick={() => {
                     void window.api.chat.respondPermission(permission.requestId, true)
-                    setPermission(null)
+                    setPermissions((q) => q.filter((p) => p.requestId !== permission.requestId))
                   }}
                 >
                   允许
@@ -853,68 +904,68 @@ export default function App(): React.JSX.Element {
                 <button
                   onClick={() => {
                     void window.api.chat.respondPermission(permission.requestId, false)
-                    setPermission(null)
+                    setPermissions((q) => q.filter((p) => p.requestId !== permission.requestId))
                   }}
                 >
                   拒绝
                 </button>
-                <button
-                  className="card-remember"
-                  title="之后这个工具不再逐次询问,换会话即失效"
-                  onClick={() => {
-                    void window.api.chat.respondPermission(
-                      permission.requestId,
-                      true,
-                      true,
-                      permission.toolName,
-                    )
-                    setPermission(null)
-                  }}
-                >
-                  本次会话内不再问 {permission.toolName}
-                </button>
+                {permission.ruleSummary && (
+                  <button
+                    className="card-remember"
+                    title="只放行这个范围,换会话即失效"
+                    onClick={() => {
+                      void window.api.chat.respondPermission(permission.requestId, true, true)
+                      setPermissions((q) => q.filter((p) => p.requestId !== permission.requestId))
+                    }}
+                  >
+                    本次会话内不再问 {permission.ruleSummary}
+                  </button>
+                )}
               </div>
             </div>
           )}
 
           {elicitation && (
             <ElicitationCard
+              key={elicitation.id}
               card={elicitation}
               onSubmit={(values) => {
                 void window.api.chat.respondElicitation(elicitation.id, values)
-                setElicitation(null)
+                setElicitations((q) => q.filter((c) => c.id !== elicitation.id))
               }}
               onCancel={() => {
                 void window.api.chat.respondElicitation(elicitation.id, null)
-                setElicitation(null)
+                setElicitations((q) => q.filter((c) => c.id !== elicitation.id))
               }}
             />
           )}
 
           {ask && (
             <AskCard
+              key={ask.id}
               card={ask}
               onSubmit={(answer) => {
                 void window.api.chat.respondAsk(ask.id, answer)
-                setAsk(null)
+                setAsks((q) => q.filter((c) => c.id !== ask.id))
               }}
               onCancel={() => {
                 void window.api.chat.respondAsk(ask.id, null)
-                setAsk(null)
+                setAsks((q) => q.filter((c) => c.id !== ask.id))
               }}
             />
           )}
 
           {plan && (
             <PlanCard
+              key={plan.id}
               card={plan}
               onAccept={() => {
                 void window.api.chat.respondPlan(plan.id, true)
-                setPlan(null)
+                setPlans((q) => q.filter((c) => c.id !== plan.id))
               }}
               onDiscuss={() => {
                 void window.api.chat.respondPlan(plan.id, false)
-                setPlan(null)
+                setPlans((q) => q.filter((c) => c.id !== plan.id))
               }}
             />
           )}

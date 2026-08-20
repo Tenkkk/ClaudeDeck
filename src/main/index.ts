@@ -430,8 +430,8 @@ function registerIpc(): void {
   ipcMain.handle('chat:interrupt', () => active?.interrupt())
   ipcMain.handle(
     'chat:permission',
-    (_e, requestId: string, allow: boolean, remember: boolean, toolName?: string) => {
-      active?.answerPermission(requestId, allow, remember, toolName)
+    (_e, requestId: string, allow: boolean, remember: boolean) => {
+      active?.answerPermission(requestId, allow, remember)
     },
   )
 
