@@ -504,6 +504,33 @@ export class ChatSession {
       return
     }
 
+    // API 请求失败在自动重试 —— 不说的话这段静默停顿和卡死无从区分
+    if (msg.type === 'system' && msg.subtype === 'api_retry') {
+      this.emit({ type: 'retry', attempt: msg.attempt, max: msg.max_retries })
+      return
+    }
+
+    // 撞到额度限制。rejected 会停下等待重置,不能让界面看起来像卡死
+    if (msg.type === 'rate_limit_event') {
+      const info = msg.rate_limit_info
+      if (info.status === 'rejected' || info.status === 'allowed_warning') {
+        this.emit({ type: 'limit', status: info.status, resetsAt: info.resetsAt ?? null })
+      }
+      return
+    }
+
+    // 上下文刚被压缩 —— 对话流里落一道分界,「它怎么忘了」才有迹可循
+    if (msg.type === 'system' && msg.subtype === 'compact_boundary') {
+      this.emit({ type: 'compacted' })
+      return
+    }
+
+    // 会话中途命令表变了(装了 skill、reloadSkills)—— 推整张新表
+    if (msg.type === 'system' && msg.subtype === 'commands_changed') {
+      this.emitCommands(msg.commands)
+      return
+    }
+
     if (msg.type === 'assistant') {
       for (const block of msg.message.content) {
         if (block.type === 'tool_use') {

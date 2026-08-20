@@ -439,6 +439,8 @@ type TranscriptEntry =
   | { kind: 'tool'; row: ToolRow }
   /** Claude 回答之前的思考。默认折叠 —— 想看的时候才看 */
   | { kind: 'thinking'; text: string }
+  /** 上下文在这里被压缩过 —— 压缩若不留痕,「它怎么忘了」就无从解释 */
+  | { kind: 'compact' }
   /**
    * `/mcp` 与 `/agents` 的面板。**只是个占位,不带数据** ——
    * 面板自己去取、自己刷新,否则点了「重连」之后画面还停在旧状态上。
@@ -454,8 +456,11 @@ type TranscriptEntry =
 export type TranscriptItem = TranscriptEntry & { uid?: number }
 
 /** Streamed from main to renderer over the `chat:event` channel. */
-/** 与 SDK 的 SDKStatus 一致 —— 不自己另立一套状态机 */
-export type TurnStatus = 'compacting' | 'requesting' | null
+/**
+ * 前两个值与 SDK 的 SDKStatus 一致;retrying / limited 由 api_retry 与
+ * rate_limit 消息归一进来 —— 同一根状态线,免得界面上两处各自转圈。
+ */
+export type TurnStatus = 'compacting' | 'requesting' | 'retrying' | 'limited' | null
 
 export type ChatEvent =
   | { type: 'session'; sessionId: string }
@@ -516,6 +521,12 @@ export type ChatEvent =
    * 请求已经死了,卡留在界面上点了也只是 no-op,必须收走。
    */
   | { type: 'dismiss'; card: 'permission' | 'ask' | 'plan' | 'elicitation'; id: string }
+  /** API 请求失败在自动重试 —— 不说的话这段静默停顿和卡死无从区分 */
+  | { type: 'retry'; attempt: number; max: number }
+  /** 撞到额度限制。rejected 会停下等待重置;时间戳为秒,可空 */
+  | { type: 'limit'; status: 'rejected' | 'allowed_warning'; resetsAt: number | null }
+  /** 上下文刚被压缩过,对话流里落一道分界 */
+  | { type: 'compacted' }
   /** 命令表变了(会话中途装了 skill、reloadSkills 之后)—— 整体替换 */
   | { type: 'commands'; commands: SlashCommandItem[] }
 

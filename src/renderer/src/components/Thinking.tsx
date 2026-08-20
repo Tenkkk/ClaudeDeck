@@ -43,7 +43,17 @@ export default function Thinking({
     secs < 60 ? `${secs} 秒` : `${Math.floor(secs / 60)} 分 ${String(secs % 60).padStart(2, '0')} 秒`
 
   const label =
-    status === 'compacting' ? '正在压缩上下文' : streaming ? '输出中' : status === 'requesting' ? '思考中' : '处理中'
+    status === 'compacting'
+      ? '正在压缩上下文'
+      : status === 'retrying'
+        ? '网络波动,自动重试中'
+        : status === 'limited'
+          ? '额度受限,等待重置'
+          : streaming
+            ? '输出中'
+            : status === 'requesting'
+              ? '思考中'
+              : '处理中'
 
   /** 上千了就写成 1.9k —— 四位数字每秒变一次太吵 */
   function formatTokens(n: number): string {

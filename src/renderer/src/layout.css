@@ -1564,6 +1564,22 @@ kbd,
   line-height: 1.7;
 }
 
+/* 上下文压缩留痕 —— 低调的一行分界,不抢戏 */
+.compact-mark {
+  justify-self: center;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-m);
+  letter-spacing: 0.08em;
+  padding: var(--s4) 0;
+}
+
+.compact-mark::before,
+.compact-mark::after {
+  content: ' —— ';
+  color: var(--border);
+}
+
 /* §06 Claude · 靠左 · 无气泡 · 最宽 720 · Source Serif 正文 */
 .msg-claude {
   justify-self: start;

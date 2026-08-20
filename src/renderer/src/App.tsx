@@ -131,6 +131,11 @@ const TranscriptList = memo(function TranscriptList({
           <ToolRow key={item.row.id} row={item.row} />
         ) : item.kind === 'thinking' ? (
           <Thought key={item.uid ?? `i${i}`} text={item.text} />
+        ) : item.kind === 'compact' ? (
+          // 压缩留痕:一道低调的分界 —— 这之前的对话已被摘要接续
+          <div key={item.uid ?? `i${i}`} className="compact-mark">
+            上下文已在此处压缩
+          </div>
         ) : item.kind === 'mcp' ? (
           <McpPanel key={item.uid ?? `i${i}`} />
         ) : item.kind === 'agents' ? (
@@ -183,6 +188,8 @@ export default function App(): React.JSX.Element {
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  /** 撞到额度上限时的说明行,点掉或本轮结束自动消失 */
+  const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const [commands, setCommands] = useState<SlashCommandItem[]>([])
   const [paletteIndex, setPaletteIndex] = useState(0)
   const [controlRequest, setControlRequest] = useState<'model' | 'effort' | null>(null)
@@ -339,6 +346,26 @@ export default function App(): React.JSX.Element {
         setTasks(event.tasks)
       } else if (event.type === 'status') {
         setTurnStatus(event.status)
+      } else if (event.type === 'retry') {
+        // 网络波动的自动重试 —— 不说的话这段静默停顿和卡死无从区分
+        setTurnStatus('retrying')
+      } else if (event.type === 'limit') {
+        if (event.status === 'rejected') {
+          setTurnStatus('limited')
+          const when = event.resetsAt
+            ? new Date(event.resetsAt * 1000).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              })
+            : null
+          setLimitNotice(when ? `额度已达上限,预计 ${when} 重置` : '额度已达上限,等待重置')
+        }
+        // 无论警告还是拒绝,额度环都该立刻反映最新占用
+        void refreshMeters()
+      } else if (event.type === 'compacted') {
+        // 压缩要留痕 —— 否则「它怎么忘了前面说的」无从解释
+        setTranscript((t) => [...t, stamp({ kind: 'compact' })])
       } else if (event.type === 'commands') {
         setCommands(event.commands)
       } else if (event.type === 'progress') {
@@ -380,6 +407,7 @@ export default function App(): React.JSX.Element {
         flushThinking()
         flushStreaming()
         setBusy(false)
+        setLimitNotice(null)
         void refreshSessions()
         void refreshMeters()
         // 只把消息 id 合并进来,不替换 transcript —— 见 mergeMessageIds
@@ -521,6 +549,7 @@ export default function App(): React.JSX.Element {
     setBusy(false)
     setTasks([])
     setError(null)
+    setLimitNotice(null)
     setPermissions([])
     setAsks([])
     setPlans([])
@@ -1078,6 +1107,13 @@ export default function App(): React.JSX.Element {
                 if (config?.activeWorkspace) await openSession(config.activeWorkspace, newId)
               }}
             />
+          )}
+
+          {limitNotice && (
+            <div className="notice" onClick={() => setLimitNotice(null)}>
+              <span className="notice-icon">⊙</span>
+              <span>{limitNotice}</span>
+            </div>
           )}
 
           {error && <div className="error-line">{error}</div>}
