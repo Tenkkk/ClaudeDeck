@@ -227,6 +227,8 @@ export default function App(): React.JSX.Element {
     const sid = activeSessionRef.current
     if (!sid) return
     const stored = await window.api.sessions.history(sid)
+    // 等 history 的空当里可能已经切走了 —— 旧会话的 id 不能盖到新对话上
+    if (activeSessionRef.current !== sid) return
     const candidates = stored.flatMap((i) =>
       (i.kind === 'user' || i.kind === 'assistant') && i.id
         ? [{ kind: i.kind, text: i.text.trim(), id: i.id }]
@@ -507,21 +509,36 @@ export default function App(): React.JSX.Element {
   }
 
   /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
+  const openGen = useRef(0)
   async function openSession(projectPath: string, sessionId: string): Promise<void> {
+    /*
+     * 代际守卫:快速连点两条会话,两次 openSession 的 await 会交错 ——
+     * 后点的先回来、先点的后回来,于是标题是 B、正文是 A。
+     * 每次进来领一个代数,每个 await 回来先看世界还是不是自己的,
+     * 不是就直接退场,半点不许再落。
+     */
+    const gen = ++openGen.current
     // 主进程已经不再转发旧会话的事件,但界面上已画出来的要自己收拾
     resetTurnState()
     if (projectPath !== config?.activeWorkspace) {
-      setConfig(await window.api.projects.activate(projectPath))
+      const next = await window.api.projects.activate(projectPath)
+      if (gen !== openGen.current) return
+      setConfig(next)
     }
     setActiveSession(sessionId)
     activeSessionRef.current = sessionId
-    setTranscript(await window.api.sessions.history(sessionId))
+    const history = await window.api.sessions.history(sessionId)
+    if (gen !== openGen.current) return
+    setTranscript(history.map(stamp))
     await window.api.chat.open(sessionId)
+    if (gen !== openGen.current) return
     setModels(await window.api.chat.models())
     await refreshMeters()
   }
 
   async function newSession(): Promise<void> {
+    // 新建也占一代,让还在路上的 openSession 作废
+    openGen.current += 1
     setActiveSession(null)
     activeSessionRef.current = null
     setTranscript([])
