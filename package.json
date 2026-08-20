@@ -1,6 +1,6 @@
 {
   "name": "claudedeck",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "ClaudeDeck — 把 Claude Code 封装成图形界面聊天软件的 Windows 桌面应用",
   "author": "Tenk",
   "license": "MIT",
