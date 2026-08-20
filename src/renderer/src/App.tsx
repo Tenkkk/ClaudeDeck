@@ -339,6 +339,8 @@ export default function App(): React.JSX.Element {
         setTasks(event.tasks)
       } else if (event.type === 'status') {
         setTurnStatus(event.status)
+      } else if (event.type === 'commands') {
+        setCommands(event.commands)
       } else if (event.type === 'progress') {
         setOutputTokens(event.outputTokens)
       } else if (event.type === 'unknownDialog') {
@@ -439,9 +441,18 @@ export default function App(): React.JSX.Element {
     if (phase !== 'workspace') return
     void refreshSessions()
     void window.api.chat.open().then(async () => {
-      setModels(await window.api.chat.models())
-      setAccount(await window.api.chat.account())
-      setCommands(await window.api.chat.commands())
+      // 首屏一次拿齐(命令 / 模型 / 账号本来是三次控制往返);
+      // 拿不到就退回逐项拉
+      const init = await window.api.chat.init()
+      if (init) {
+        setModels(init.models)
+        setAccount(init.account)
+        setCommands(init.commands)
+      } else {
+        setModels(await window.api.chat.models())
+        setAccount(await window.api.chat.account())
+        setCommands(await window.api.chat.commands())
+      }
       await refreshMeters()
     })
   }, [phase, refreshSessions, refreshMeters])

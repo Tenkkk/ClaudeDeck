@@ -6,6 +6,7 @@ import {
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { resolveClaudeExecutable } from './binary.js'
+import { annotateSources } from './commands.js'
 import { credentialEnv } from './config.js'
 import {
   askAnswerPatch,
@@ -25,6 +26,7 @@ import type {
   ElicitationField,
   AccountInfo,
   AgentInfo,
+  InitInfo,
   McpServer,
   PermissionMode,
   ToolRow,
@@ -136,6 +138,8 @@ export class ChatSession {
   private streamedText = false
   /** 当前权限档。canUseTool 要按它决定哪些不必再问 */
   private permissionMode: PermissionMode = 'default'
+  /** 工作目录 —— 给命令表标来源(项目命令 / skill)用 */
+  private cwd = ''
   private pendingAsks = new Map<string, (v: AskAnswer | null) => void>()
   private pendingPlans = new Map<string, (accepted: boolean) => void>()
   private pendingElicitations = new Map<
@@ -179,6 +183,7 @@ export class ChatSession {
     // 从已有会话续上来的,磁盘上当然有东西
     this.persisted = Boolean(opts.resume)
     this.permissionMode = opts.permissionMode
+    this.cwd = opts.cwd
 
     this.q = query({
       prompt: this.inbox,
@@ -580,6 +585,13 @@ export class ChatSession {
     }
   }
 
+  /** 统一出口:命令表标好来源再推给界面(annotateSources 按 cwd 查目录) */
+  private emitCommands(
+    list: { name: string; description: string; argumentHint: string; aliases?: string[] }[],
+  ): void {
+    this.emit({ type: 'commands', commands: annotateSources(list, this.cwd) })
+  }
+
   send(text: string): void {
     // 计数按「轮」清零 —— 状态行显示的是这一轮的产出,不是整个会话的累计
     this.outputTokens = 0
@@ -653,6 +665,50 @@ export class ChatSession {
     { name: string; description: string; argumentHint: string; aliases?: string[] }[]
   > {
     return (await this.q?.supportedCommands()) ?? []
+  }
+
+  /**
+   * 首屏要的东西一次拿齐 —— 命令、模型、账号本来是三次控制往返。
+   * 拿不到就返回 null,调用方退回逐项拉取。
+   */
+  async initInfo(): Promise<InitInfo | null> {
+    if (!this.q) return null
+    try {
+      const r = await this.q.initializationResult()
+      return {
+        models: r.models.map((m) => ({
+          value: m.value,
+          displayName: m.displayName,
+          description: m.description,
+          effortLevels: m.supportedEffortLevels,
+        })),
+        commands: annotateSources(r.commands, this.cwd),
+        account: r.account
+          ? {
+              email: r.account.email,
+              organization: r.account.organization,
+              subscriptionType: r.account.subscriptionType,
+              apiProvider: r.account.apiProvider,
+            }
+          : null,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 改完 .claude/skills 立即重扫,不必重开会话。重扫后的完整命令表
+   * 主动拉一次推给界面 —— commands_changed 推送不一定跟得上。
+   */
+  async reloadSkills(): Promise<void> {
+    if (!this.q) return
+    try {
+      await this.q.reloadSkills()
+      this.emitCommands(await this.q.supportedCommands())
+    } catch {
+      // 重扫失败就等下次会话 —— 保存本身已经成功,不该因此报错
+    }
   }
 
   async listModels(): Promise<{ value: string; displayName: string }[]> {

@@ -104,6 +104,8 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
 | `usage_EXPERIMENTAL_…` | 额度与本会话花费(实验性 API,名字就是警告) |
 | `setModel` / `setPermissionMode` | 控件条 |
 | `applyFlagSettings` | Effort 原地切换(flag 层在 `--effort` 之上,合并即覆盖) |
+| `initializationResult` | 首屏命令 / 模型 / 账号一次拿齐,省三次往返 |
+| `reloadSkills` | `.claude` 编辑器存完 skill / 命令立即重扫,免重开会话 |
 | `interrupt` | 停止按钮 |
 | `stopTask` / `backgroundTasks` | 子进程面板。注意 `backgroundTasks` 是**动作**(把前台任务转后台,对应终端的 Ctrl+B),不是「取任务列表」 |
 | `rewindFiles` | 分支时的文件回退 |
@@ -114,9 +116,8 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
 | 方法 | 能做什么 |
 |---|---|
 | `readFile` | 按会话的权限规则读文件,可用于内置的文件查看 |
-| `reloadPlugins` / `reloadSkills` | 改完 `.claude/skills` 不必重开会话 |
+| `reloadPlugins` | 改完插件不必重开会话(skills 那半已接,见上表) |
 | `setMcpServers` / `setMcpPermissionModeOverride` | 会话内增删 MCP、单独收紧某个服务的权限 |
-| `initializationResult` | 一次拿齐命令 / 模型 / 账户,省掉几次往返 |
 | `reinitialize` / `seedReadState` | 断连恢复、补读状态 |
 | `setMaxThinkingTokens` | **已弃用**,官方让改用 `options.thinking`——本项目走的就是后者,不要退回去 |
 

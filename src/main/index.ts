@@ -452,10 +452,20 @@ function registerIpc(): void {
 
   ipcMain.handle(
     'claude:write',
-    (_e, projectPath: string, relPath: string, content: string): SaveResult =>
-      knownProject(projectPath)
-        ? writeClaudeFile(projectPath, relPath, content)
-        : { ok: false, reason: 'out-of-scope' },
+    (_e, projectPath: string, relPath: string, content: string): SaveResult => {
+      if (!knownProject(projectPath)) return { ok: false, reason: 'out-of-scope' }
+      const result = writeClaudeFile(projectPath, relPath, content)
+      // 存的是当前项目的 skill / 命令 → 活着的会话立即重扫,不必重开;
+      // 新命令表随 commands 事件推回界面
+      if (
+        result.ok &&
+        projectPath === getConfig().activeWorkspace &&
+        /^\.claude\/(skills|commands)\//.test(relPath)
+      ) {
+        void active?.reloadSkills()
+      }
+      return result
+    },
   )
 
   ipcMain.handle('chat:open', (_e, sessionId?: string) => {
@@ -473,6 +483,9 @@ function registerIpc(): void {
     active?.send(text)
     return true
   })
+
+  /** 首屏三次控制往返合一;拿不到返回 null,渲染层退回逐项拉 */
+  ipcMain.handle('chat:init', () => active?.initInfo() ?? null)
 
   ipcMain.handle('chat:models', () => active?.listModels() ?? [])
 

@@ -516,8 +516,20 @@ export type ChatEvent =
    * 请求已经死了,卡留在界面上点了也只是 no-op,必须收走。
    */
   | { type: 'dismiss'; card: 'permission' | 'ask' | 'plan' | 'elicitation'; id: string }
+  /** 命令表变了(会话中途装了 skill、reloadSkills 之后)—— 整体替换 */
+  | { type: 'commands'; commands: SlashCommandItem[] }
 
 export interface PermissionReply {
   requestId: string
   allow: boolean
+}
+
+/**
+ * 首屏三次控制往返(命令 / 模型 / 账号)合成一次 initializationResult。
+ * 取不到时渲染层退回逐项拉取。
+ */
+export interface InitInfo {
+  models: ModelOption[]
+  commands: SlashCommandItem[]
+  account: AccountInfo | null
 }

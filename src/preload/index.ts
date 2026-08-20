@@ -13,6 +13,7 @@ import type {
   EffortLevel,
   FileEntry,
   FileRead,
+  InitInfo,
   ModelOption,
   PermissionMode,
   RewindPreview,
@@ -115,6 +116,8 @@ const api = {
   chat: {
     open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),
     send: (text: string): Promise<boolean> => ipcRenderer.invoke('chat:send', text),
+    /** 首屏三次控制往返合一;null 时退回逐项拉取 */
+    init: (): Promise<InitInfo | null> => ipcRenderer.invoke('chat:init'),
     models: (): Promise<ModelOption[]> => ipcRenderer.invoke('chat:models'),
     commands: (): Promise<SlashCommandItem[]> => ipcRenderer.invoke('chat:commands'),
     respondElicitation: (
