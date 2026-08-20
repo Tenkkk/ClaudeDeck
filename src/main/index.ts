@@ -446,13 +446,9 @@ function registerIpc(): void {
     await active?.setPermissionMode(mode)
   })
 
-  // Effort has no in-place setter on Query, so it requires reopening the query.
-  // Resuming with forkSession:false keeps the same session id and history.
-  ipcMain.handle('chat:setEffort', (_e, effort: EffortLevel) => {
+  ipcMain.handle('chat:setEffort', async (_e, effort: EffortLevel) => {
     updateConfig({ effort })
-    // 空会话没什么可 resume 的 —— 拿它的 id 去续,CLI 会报「没有这个会话」
-    const resume = active?.resumable ?? undefined
-    if (active) openSession(resume)
+    await active?.setEffort(effort)
   })
 }
 

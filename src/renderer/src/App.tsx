@@ -126,8 +126,6 @@ export default function App(): React.JSX.Element {
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  /** 切 Effort 要关掉旧 query 再 resume,中间几百毫秒没有活着的 query · §08 */
-  const [effortSwitching, setEffortSwitching] = useState(false)
   const [commands, setCommands] = useState<SlashCommandItem[]>([])
   const [paletteIndex, setPaletteIndex] = useState(0)
   const [controlRequest, setControlRequest] = useState<'model' | 'effort' | null>(null)
@@ -1017,7 +1015,6 @@ export default function App(): React.JSX.Element {
               model={config?.model ?? 'default'}
               effort={config?.effort ?? 'medium'}
               busy={busy}
-              effortSwitching={effortSwitching}
               canSend={Boolean(draft.trim())}
               context={context}
               usage={usage}
@@ -1032,15 +1029,10 @@ export default function App(): React.JSX.Element {
                 void window.api.chat.setModel(v)
                 setConfig((c) => (c ? { ...c, model: v } : c))
               }}
-              onEffort={async (v) => {
+              onEffort={(v) => {
+                // 和模型、权限档一样是一次原地控制请求,不再重开 query
+                void window.api.chat.setEffort(v)
                 setConfig((c) => (c ? { ...c, effort: v } : c))
-                setEffortSwitching(true)
-                try {
-                  await window.api.chat.setEffort(v)
-                  setModels(await window.api.chat.models())
-                } finally {
-                  setEffortSwitching(false)
-                }
               }}
               onSend={() => void send()}
               onStop={() => void window.api.chat.interrupt()}

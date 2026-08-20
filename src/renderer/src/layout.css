@@ -3023,18 +3023,6 @@ button.todo-box {
   background: var(--bubble-hover);
 }
 
-/* 切档时几百毫秒没有活着的 query,给个呼吸点,别让界面看起来卡死 */
-.effort-pending {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: var(--s6);
-  height: var(--s6);
-  border-radius: var(--r-pill);
-  background: var(--accent);
-  animation: cd-breathe 2.4s ease-in-out infinite;
-}
-
 /* ---- 弹层行 · §08 共用规格 ---- */
 
 .pop-group {

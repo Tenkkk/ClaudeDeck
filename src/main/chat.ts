@@ -141,7 +141,8 @@ export class ChatSession {
    *
    * `system/init` 一上来就给了 session_id,但那时会话文件还没写 ——
    * 拿它去 resume,CLI 会回「No conversation found with session ID」。
-   * 触发路径很日常:新建会话、一个字没发就去拖 Effort 滑块。
+   * 任何「重开 query 续上当前会话」的路径(比如将来的断连自愈)都必须
+   * 先过这一道,拿 `resumable` 而不是裸的 sessionId。
    */
   private persisted = false
 
@@ -499,6 +500,15 @@ export class ChatSession {
 
   async setModel(model: string): Promise<void> {
     await this.q?.setModel(model)
+  }
+
+  /**
+   * Effort 原地生效:flag 设置层在 --effort 之上,mid-session 合并即覆盖。
+   * 以前这里要重开 query 再 resume,答话途中切档会让新旧两个 CLI 进程
+   * 同时写同一份会话文件 —— 现在和 setModel 一样是一次控制请求。
+   */
+  async setEffort(effort: EffortLevel): Promise<void> {
+    await this.q?.applyFlagSettings({ effortLevel: effort })
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {

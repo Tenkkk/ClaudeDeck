@@ -27,7 +27,6 @@ export default function ControlBar({
   model,
   effort,
   busy,
-  effortSwitching,
   canSend,
   onMode,
   onModel,
@@ -48,7 +47,6 @@ export default function ControlBar({
   model: string
   effort: EffortLevel
   busy: boolean
-  effortSwitching: boolean
   canSend: boolean
   onMode: (m: PermissionMode) => void
   onModel: (v: string) => void
@@ -90,8 +88,8 @@ export default function ControlBar({
     levels.findIndex((e) => e.value === effort),
   )
 
-  // 拖拽中只动这个预览值,松手才提交 —— 切一档要重开一次 query,
-  // 拖过五档不能变成五次重连。
+  // 拖拽中只动这个预览值,松手才提交 —— 拖过五档只该发一次切换,
+  // 不该一路发五次
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const shownIndex = dragIndex ?? effortIndex
@@ -210,9 +208,6 @@ export default function ControlBar({
             onClick={() => toggle('effort')}
           >
             {effortInfo?.label}
-            {/* 切档要重开 query,中间几百毫秒没有活着的 query。
-                给一个呼吸点,别让界面看起来像卡死了(§13 的预览就是这么画的)。 */}
-            {effortSwitching && <span className="effort-pending" />}
           </button>
 
           <Popover open={open === 'effort'} onClose={close} align="right" width={240} prose>
@@ -273,7 +268,7 @@ export default function ControlBar({
               ))}
             </div>
             <div className="effort-note">
-              越往右,Claude 在回答前想得越久、也越贵。切换会短暂重连,几百毫秒。
+              越往右,Claude 在回答前想得越久、也越贵。切换即刻生效,对话不中断。
             </div>
           </Popover>
         </div>

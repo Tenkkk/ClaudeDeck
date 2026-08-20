@@ -101,6 +101,7 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
 | `getContextUsage` | 上下文环与分类明细 |
 | `usage_EXPERIMENTAL_…` | 额度与本会话花费(实验性 API,名字就是警告) |
 | `setModel` / `setPermissionMode` | 控件条 |
+| `applyFlagSettings` | Effort 原地切换(flag 层在 `--effort` 之上,合并即覆盖) |
 | `interrupt` | 停止按钮 |
 | `stopTask` / `backgroundTasks` | 子进程面板。注意 `backgroundTasks` 是**动作**(把前台任务转后台,对应终端的 Ctrl+B),不是「取任务列表」 |
 | `rewindFiles` | 分支时的文件回退 |
@@ -114,7 +115,7 @@ canUseTool('ExitPlanMode', { plan, planFilePath })
 | `reloadPlugins` / `reloadSkills` | 改完 `.claude/skills` 不必重开会话 |
 | `setMcpServers` / `setMcpPermissionModeOverride` | 会话内增删 MCP、单独收紧某个服务的权限 |
 | `initializationResult` | 一次拿齐命令 / 模型 / 账户,省掉几次往返 |
-| `reinitialize` / `applyFlagSettings` / `seedReadState` | 断连恢复、会话中途改配置、补读状态 |
+| `reinitialize` / `seedReadState` | 断连恢复、补读状态 |
 | `setMaxThinkingTokens` | **已弃用**,官方让改用 `options.thinking`——本项目走的就是后者,不要退回去 |
 
 ## 宿主回调只有三个
@@ -147,13 +148,18 @@ refusal_fallback_prompt      permission_prompt
 **没有可验证契约的 kind 一律回 `{ behavior: 'cancelled' }`。**
 猜错的选择会真的落到文件上。
 
-## 选项切换的代价不对称
+## 选项切换都是原地生效
 
 | 选项 | 方式 | 是否打断 |
 |---|---|---|
 | 模型 | `Query.setModel()` | 否 |
 | 权限档 | `Query.setPermissionMode()` | 否 |
-| Effort | 无 setter,需重开 query 并 `resume` | 会短暂重连 |
+| Effort | `Query.applyFlagSettings({ effortLevel })` | 否 |
+
+Effort 没有专用 setter,但 flag 设置层(等价于 query() 的 inline `settings`,
+mid-session 合并)压得过启动时传的 `--effort`,所以**不需要重开 query**。
+早期版本靠重开 + resume 实现,答话途中切档会让新旧两个 CLI 进程同时写
+同一份会话文件 —— 不要退回那个做法。
 
 ## 样式
 
