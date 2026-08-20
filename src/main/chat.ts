@@ -112,6 +112,20 @@ function permissionTarget(input: unknown): string | undefined {
 }
 
 /**
+ * 模型的显示名。CLI 某些版本给非默认模型的 displayName 就是裸模型 id
+ * (claude-haiku-4-5-…),控件条按「第一个词」显示会变成一长串 id。
+ * 这种情况下用 CLI 自己的短别名(value:opus / sonnet / haiku…)首字母
+ * 大写来当显示名 —— 别名同样来自 CLI,不是我们编的;displayName
+ * 正常时原样照搬。
+ */
+function modelDisplayName(m: { value: string; displayName: string }): string {
+  if (m.displayName !== m.value && !/^claude-/i.test(m.displayName)) return m.displayName
+  return /^[a-z][a-z0-9]*$/i.test(m.value)
+    ? m.value.charAt(0).toUpperCase() + m.value.slice(1)
+    : m.displayName
+}
+
+/**
  * One live conversation. Wraps a single long-lived Query so that model and
  * permission-mode changes can be applied in place rather than by restarting.
  */
@@ -718,7 +732,7 @@ export class ChatSession {
       return {
         models: r.models.map((m) => ({
           value: m.value,
-          displayName: m.displayName,
+          displayName: modelDisplayName(m),
           description: m.description,
           effortLevels: m.supportedEffortLevels,
         })),
@@ -757,7 +771,7 @@ export class ChatSession {
     // Best for everyday, complex tasks」),照搬,不自己编。
     return (models ?? []).map((m) => ({
       value: m.value,
-      displayName: m.displayName,
+      displayName: modelDisplayName(m),
       description: m.description,
       effortLevels: m.supportedEffortLevels,
     }))
