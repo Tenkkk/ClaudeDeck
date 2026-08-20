@@ -14,6 +14,7 @@ import {
   SUPPORTED_DIALOG_KINDS,
 } from './dialogs.js'
 import { coerceValues, fieldsFromSchema } from './elicit.js'
+import { createClaudeSpawner } from './spawn.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   AskAnswer,
@@ -113,6 +114,8 @@ function permissionTarget(input: unknown): string | undefined {
 export class ChatSession {
   private inbox = new Inbox()
   private q: Query | null = null
+  /** 拉起 CLI 的自定义 spawn:Windows 树杀 + stderr 遗言,见 spawn.ts */
+  private spawner = createClaudeSpawner()
   /**
    * requestId(= tool_use id)→ 把用户的决定送回 canUseTool 的 settle。
    * 「不再问」不再由本地集合兜着 —— 放行范围随 allow 一起以
@@ -183,6 +186,9 @@ export class ChatSession {
         // 打包后必须显式指过去,否则 SDK 会去 asar 里启动那个 exe —— 起不来。
         // 开发时是 undefined,走 SDK 自己的解析。见 binary.ts。
         pathToClaudeCodeExecutable: resolveClaudeExecutable(),
+        // SDK 默认的拆除在 Windows 上只杀领头进程,MCP 与 Bash 子进程全部
+        // 变孤儿 —— 自定义 spawn 换成整树 taskkill,见 spawn.ts
+        spawnClaudeCodeProcess: this.spawner.spawn,
         resume: opts.resume,
         // Resuming without forkSession continues the same session id, so the
         // sidebar entry the user clicked stays the entry that grows.
@@ -422,12 +428,21 @@ export class ChatSession {
        */
       if (!this.disposed) {
         this.broken = true
-        this.emit({ type: 'error', message: '会话进程意外退出,再发一条消息会自动重连。' })
+        // 自定义 spawn 之后 SDK 不再收集 stderr,死因由我们自己留的尾巴给
+        const tail = this.spawner.stderrTail().slice(-300)
+        this.emit({
+          type: 'error',
+          message: tail
+            ? `会话进程意外退出(${tail}),再发一条消息会自动重连。`
+            : '会话进程意外退出,再发一条消息会自动重连。',
+        })
       }
     } catch (err) {
       if (!this.disposed) {
         this.broken = true
-        this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+        const detail = err instanceof Error ? err.message : String(err)
+        const tail = this.spawner.stderrTail().slice(-300)
+        this.emit({ type: 'error', message: tail ? `${detail}(stderr: ${tail})` : detail })
       }
     }
   }
