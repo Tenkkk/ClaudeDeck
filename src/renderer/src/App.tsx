@@ -445,15 +445,28 @@ export default function App(): React.JSX.Element {
     })
   }, [known])
 
-  /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
-  async function openSession(projectPath: string, sessionId: string): Promise<void> {
-    // 上一轮的残留一并清掉:主进程已经不再转发旧会话的事件,但界面上
-    // 已经画出来的半截回答、还亮着的「停止」按钮得自己收拾
+  /**
+   * 把上一个会话残留在界面上的东西统一清掉:半截回答、还亮着的「停止」、
+   * 以及四种交互卡 —— 旧会话的卡浮在新会话里,点了也只是 no-op。
+   * (轮内的取消由主进程按请求发 dismiss 事件精确收卡,这里只管换会话。)
+   */
+  function resetTurnState(): void {
     setStreaming('')
     setThinking('')
     setBusy(false)
     setTasks([])
     setError(null)
+    setPermissions([])
+    setAsks([])
+    setPlans([])
+    setElicitations([])
+    setUnknownDialog(null)
+  }
+
+  /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
+  async function openSession(projectPath: string, sessionId: string): Promise<void> {
+    // 主进程已经不再转发旧会话的事件,但界面上已画出来的要自己收拾
+    resetTurnState()
     if (projectPath !== config?.activeWorkspace) {
       setConfig(await window.api.projects.activate(projectPath))
     }
@@ -469,11 +482,7 @@ export default function App(): React.JSX.Element {
     setActiveSession(null)
     activeSessionRef.current = null
     setTranscript([])
-    setStreaming('')
-    setThinking('')
-    setBusy(false)
-    setTasks([])
-    setError(null)
+    resetTurnState()
     await window.api.chat.open()
     await refreshMeters()
   }
