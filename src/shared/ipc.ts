@@ -245,12 +245,10 @@ export interface UnknownDialogNotice {
 }
 
 /**
- * Claude 反问你 —— 设计终稿 §13,对应 dialogKind `permission_ask_user_question`。
+ * Claude 反问你 —— 设计终稿 §13。
  *
- * ⚠️ 未经端到端验证。`AskUserQuestion` 工具在当前的 SDK 会话里不上场
- * (见 CLAUDE.md),所以这条通道永远不会响。字段形状取自 CLI 二进制里
- * 那份 payload 校验器,不是猜的;但没有真数据跑过。
- * 只在真收到 dialog 时才渲染,因此对现有行为零影响。
+ * **已端到端验证:它作为普通工具调用走 `canUseTool` 到达**(不是 user dialog,
+ * 详见 CLAUDE.md)。字段形状与 CLI 的 payload 校验器一致。
  */
 export interface AskOption {
   label: string
@@ -282,8 +280,7 @@ export interface AskAnswer {
 }
 
 /**
- * 计划卡 —— 设计终稿 §06,对应 dialogKind `permission_exit_plan_mode_v2`。
- * 同样未经端到端验证,原因同上。
+ * 计划卡 —— 设计终稿 §06。同样经 `canUseTool` 到达(ExitPlanMode),已实测。
  *
  * 沙绿左条,和权限卡的陶土左条区分:一个在拦你,一个在等你满意。
  */

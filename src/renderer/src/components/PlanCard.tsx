@@ -6,8 +6,7 @@ import type { PlanCard as Card } from '../../../shared/ipc.js'
  * 沙绿左条,和权限卡的陶土左条区分:**一个在拦你,一个在等你满意。**
  * 正文用 Source Serif —— 它是 Claude 写的散文,不是日志。
  *
- * ⚠️ 未经端到端验证:ExitPlanMode 在当前 SDK 版本里不上场(见 CLAUDE.md)。
- * 只在真收到 dialog 时渲染,对现有行为零影响。
+ * 已端到端验证:ExitPlanMode 作为普通工具调用走 canUseTool 到达(见 CLAUDE.md)。
  */
 export default function PlanCard({
   card,

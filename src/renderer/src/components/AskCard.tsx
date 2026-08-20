@@ -11,8 +11,7 @@ const OTHER = '其他…'
  * 一题一屏、回车进下一题。顶上那排标签是协议给的 `header`(≤12 字),
  * 既当进度也当鼠标版的左右键。最后一题按钮变「提交」。
  *
- * ⚠️ 未经端到端验证:这条通道在当前 SDK 版本里不会响(见 CLAUDE.md)。
- * 只在真收到 dialog 时渲染,对现有行为零影响。
+ * 已端到端验证:AskUserQuestion 作为普通工具调用走 canUseTool 到达(见 CLAUDE.md)。
  */
 export default function AskCard({
   card,
