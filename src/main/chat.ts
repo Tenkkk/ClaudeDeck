@@ -310,8 +310,18 @@ export class ChatSession {
       for await (const msg of this.q) {
         this.handle(msg)
       }
+      /*
+       * 流式输入模式下生成器不会「说完就散」,它一直活着等下一条输入。
+       * 走到这里只有两种可能:我们自己 dispose 了,或者 CLI 进程死了。
+       * 后者不发事件的话,界面上只剩一个永远转下去的圈,连报错都没有。
+       */
+      if (!this.disposed) {
+        this.emit({ type: 'error', message: '会话进程意外退出,请重新打开会话。' })
+      }
     } catch (err) {
-      this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+      if (!this.disposed) {
+        this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+      }
     }
   }
 
