@@ -176,7 +176,10 @@ export function setProjectCollapsed(path: string, collapsed: boolean): AppConfig
 /** Switching the active project is implicit when opening one of its sessions. */
 export function setActiveWorkspace(path: string): AppConfig {
   const c = load()
-  if (!c.projects.some((p) => p.path === path)) return addProject(path)
+  // 只认已登记的项目。这里若顺手 addProject,渲染层就能把任意目录注册成
+  // 项目,IPC 层按 projects 对表的校验就全部形同虚设。新项目只从
+  // projects:add 的系统目录选择框进来。
+  if (!c.projects.some((p) => p.path === path)) return getConfig()
   persist({ ...c, activeWorkspace: path })
   return getConfig()
 }

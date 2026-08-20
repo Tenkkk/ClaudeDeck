@@ -35,7 +35,8 @@ const api = {
   },
   config: {
     get: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
-    update: (patch: Partial<Omit<AppConfig, 'hasApiKey'>>): Promise<AppConfig> =>
+    /** 只放行纯偏好 —— 项目清单与当前项目走各自校验过的专用通道 */
+    update: (patch: Partial<Pick<AppConfig, 'baseUrl' | 'theme'>>): Promise<AppConfig> =>
       ipcRenderer.invoke('config:update', patch),
     setApiKey: (key: string | null): Promise<AppConfig> => ipcRenderer.invoke('config:setApiKey', key),
   },

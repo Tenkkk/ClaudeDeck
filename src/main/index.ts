@@ -43,6 +43,7 @@ import type {
   SaveResult,
   SessionListItem,
   SlashCommandItem,
+  ThemePref,
   ToolRow,
   TranscriptItem,
   Versions,
@@ -58,6 +59,17 @@ function emit(event: ChatEvent): void {
   // 退出路径上 dispose 也会发事件(收卡),那时窗口可能已经销毁
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.webContents.send('chat:event', event)
+}
+
+/**
+ * 渲染层传来的项目根一律先对表。IPC 输入不可信:不拦的话,
+ * `files.read('C:\\Users\\<user>\\.claude', '.credentials.json')` 会把明文
+ * 凭据整个吐回去,`claude.write` 往全局 settings.json 里写 hooks 就是本机
+ * 任意代码执行 —— 「渲染层一个 bug」到「RCE」的距离必须由主进程拉开。
+ * 相对路径的收敛在 claudedir.ts;这里管的是「根本不该以哪个根开工」。
+ */
+function knownProject(path: string): boolean {
+  return getConfig().projects.some((p) => p.path === path)
 }
 
 function createWindow(): void {
@@ -137,7 +149,16 @@ function registerIpc(): void {
   ipcMain.handle('doctor:install', () => installCli())
 
   ipcMain.handle('config:get', () => getConfig())
-  ipcMain.handle('config:update', (_e, patch) => updateConfig(patch))
+  ipcMain.handle('config:update', (_e, patch: { baseUrl?: string; theme?: ThemePref }) => {
+    // 这条通道只放行两个纯偏好。项目清单与当前项目各有校验过的专用
+    // handler,从这里放进去等于给「把任意目录注册成项目」开后门
+    const clean: { baseUrl?: string; theme?: ThemePref } = {}
+    if (typeof patch?.baseUrl === 'string') clean.baseUrl = patch.baseUrl
+    if (patch?.theme === 'system' || patch?.theme === 'light' || patch?.theme === 'dark') {
+      clean.theme = patch.theme
+    }
+    return updateConfig(clean)
+  })
   ipcMain.handle('config:setApiKey', (_e, key: string | null) => setApiKey(key))
 
   ipcMain.handle('projects:add', async () => {
@@ -337,8 +358,10 @@ function registerIpc(): void {
   ipcMain.handle('update:download', () => updater?.download())
   ipcMain.handle('update:install', () => updater?.install())
 
-  /** 在资源管理器里打开项目目录(§08 右键菜单)。 */
-  ipcMain.handle('shell:openProject', (_e, path: string) => shell.openPath(path))
+  /** 在资源管理器里打开项目目录(§08 右键菜单)。只开登记过的项目。 */
+  ipcMain.handle('shell:openProject', (_e, path: string) =>
+    knownProject(path) ? shell.openPath(path) : '',
+  )
 
   /**
    * 正文里的链接交给系统浏览器 —— 应用窗口里没有地址栏,真导航过去就回不来了。
@@ -362,10 +385,12 @@ function registerIpc(): void {
    * 路径收敛与 .claude 那套同源,但**读的范围是整个项目、写的范围没有变**。
    */
   ipcMain.handle('files:list', (_e, projectPath: string, relDir: string): FileEntry[] =>
-    listProjectDir(projectPath, relDir),
+    knownProject(projectPath) ? listProjectDir(projectPath, relDir) : [],
   )
   ipcMain.handle('files:read', (_e, projectPath: string, relPath: string): FileRead =>
-    readProjectFile(projectPath, relPath),
+    knownProject(projectPath)
+      ? readProjectFile(projectPath, relPath)
+      : { ok: false, reason: 'out-of-scope' },
   )
 
   // .claude 配置栏 · §10。范围锁在 claudedir.ts 里,渲染层传来的路径一律不信。
@@ -377,13 +402,15 @@ function registerIpc(): void {
   // 读写都显式收 projectPath:如果按「当前项目」解析,用户切了项目而编辑器
   // 还开着,保存就会落到另一个项目的同名文件上。
   ipcMain.handle('claude:read', (_e, projectPath: string, relPath: string): string | null =>
-    readClaudeFile(projectPath, relPath),
+    knownProject(projectPath) ? readClaudeFile(projectPath, relPath) : null,
   )
 
   ipcMain.handle(
     'claude:write',
     (_e, projectPath: string, relPath: string, content: string): SaveResult =>
-      writeClaudeFile(projectPath, relPath, content),
+      knownProject(projectPath)
+        ? writeClaudeFile(projectPath, relPath, content)
+        : { ok: false, reason: 'out-of-scope' },
   )
 
   ipcMain.handle('chat:open', (_e, sessionId?: string) => {
