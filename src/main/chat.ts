@@ -426,6 +426,23 @@ export class ChatSession {
     }
 
     if (msg.type === 'result') {
+      /*
+       * result 不都是「正常说完」:超轮次、超预算、执行中崩溃的收尾也是它,
+       * 只发 done 的话这些失败在界面上和成功长得一模一样。
+       * 非 success 的 subtype 带 errors[];success 也可能 is_error(比如
+       * API 报错,错误文本在 result 字段里)。用户自己按的停止(aborted_*)
+       * 不算错,不该画成红的。
+       */
+      if (msg.subtype !== 'success') {
+        const detail = msg.errors.filter((e) => e.trim()).join('\n')
+        this.emit({ type: 'error', message: detail || `本轮异常结束(${msg.subtype})` })
+      } else if (
+        msg.is_error &&
+        msg.terminal_reason !== 'aborted_streaming' &&
+        msg.terminal_reason !== 'aborted_tools'
+      ) {
+        this.emit({ type: 'error', message: msg.result || '本轮异常结束。' })
+      }
       this.emit({ type: 'done' })
     }
   }
