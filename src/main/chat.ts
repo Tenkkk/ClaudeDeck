@@ -609,6 +609,9 @@ export class ChatSession {
         this.emit({ type: 'error', message: msg.result || '本轮异常结束。' })
       }
       this.emit({ type: 'done' })
+      // 计数按「轮」清零。以前在 send 里清 —— 排队发送时那会把
+      // 正在进行这一轮的计数中途抹掉
+      this.outputTokens = 0
     }
   }
 
@@ -620,8 +623,6 @@ export class ChatSession {
   }
 
   send(text: string): void {
-    // 计数按「轮」清零 —— 状态行显示的是这一轮的产出,不是整个会话的累计
-    this.outputTokens = 0
     // 发出去就会落盘,从这一刻起它才 resume 得回来
     this.persisted = true
     this.inbox.push({

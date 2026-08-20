@@ -282,6 +282,21 @@ export default function App(): React.JSX.Element {
     setContext(c)
   }, [])
 
+  /**
+   * 忙起来 —— 只在「从闲到忙」的那一下重置计时与计数。发送时调;
+   * 排队的下一轮开始流式时也调(那时 send 已经没机会再重置了),
+   * 所以 delta / thinking / tool 一到就打点。busyRef 挡住重复重置。
+   */
+  const busyRef = useRef(false)
+  const markBusy = useCallback(() => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    setTurnStartedAt(Date.now())
+    setTurnStatus(null)
+    setOutputTokens(0)
+  }, [])
+
   const decidePhase = useCallback((report: DoctorReport, cfg: AppConfig) => {
     if (!report.cliFound) return setPhase('onboarding')
     if (!cfg.activeWorkspace) return setPhase('projects')
@@ -324,12 +339,15 @@ export default function App(): React.JSX.Element {
         // 标题是 Claude 生成的,会晚一点变 —— done 时再刷一次盖上去。
         void refreshSessions()
       } else if (event.type === 'thinking') {
+        markBusy()
         setThinking((t) => t + event.text)
       } else if (event.type === 'delta') {
+        markBusy()
         // 正文一开口,思考就该定下来落进对话流 —— 它属于这一段回答之前
         flushThinking()
         setStreaming((s) => s + event.text)
       } else if (event.type === 'tool') {
+        markBusy()
         // 工具行插在正文之间,所以先把已经流出来的文字定下来
         flushThinking()
         flushStreaming()
@@ -406,6 +424,7 @@ export default function App(): React.JSX.Element {
         // 只思考、没开口就结束的情况也要留下(比如全程在跑工具)
         flushThinking()
         flushStreaming()
+        busyRef.current = false
         setBusy(false)
         setLimitNotice(null)
         void refreshSessions()
@@ -418,10 +437,11 @@ export default function App(): React.JSX.Element {
         flushThinking()
         flushStreaming()
         setError(event.message)
+        busyRef.current = false
         setBusy(false)
       }
     })
-  }, [refreshSessions, refreshMeters, mergeMessageIds])
+  }, [refreshSessions, refreshMeters, mergeMessageIds, markBusy])
 
   /*
    * 对话区跟着新内容走 —— 但只在你本来就贴着底的时候。
@@ -546,6 +566,7 @@ export default function App(): React.JSX.Element {
   function resetTurnState(): void {
     setStreaming('')
     setThinking('')
+    busyRef.current = false
     setBusy(false)
     setTasks([])
     setError(null)
@@ -598,7 +619,7 @@ export default function App(): React.JSX.Element {
 
   async function send(): Promise<void> {
     const text = draft.trim()
-    if (!text || busy) return
+    if (!text) return
 
     // 这几条是界面自己的命令,不是给 agent 的。终端里 /model 由 CLI 的界面层
     // 处理,发给 agent 只会石沉大海 —— 命令面板拦得住敲回车,拦不住点「发送」。
@@ -638,12 +659,10 @@ export default function App(): React.JSX.Element {
       if (!known) setPendingSession({ path: ws, title: text })
     }
     setTranscript((t) => [...t, stamp({ kind: 'user', text, ts: Date.now() })])
-    setBusy(true)
     setError(null)
-    // 等待态的计时与计数按轮清零
-    setTurnStartedAt(Date.now())
-    setTurnStatus(null)
-    setOutputTokens(0)
+    // 回答中发送不打断也不吞输入 —— 消息排队,当前轮答完接着处理。
+    // 计时与计数只在「从闲到忙」时清零(markBusy),排队不动当前轮的表
+    markBusy()
     await window.api.chat.send(text)
   }
 
@@ -1134,7 +1153,11 @@ export default function App(): React.JSX.Element {
             <textarea
               ref={composerRef}
               value={draft}
-              placeholder="给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)"
+              placeholder={
+                busy
+                  ? '正在回答…这条会排队,答完接着发(Enter 发送)'
+                  : '给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令)'
+              }
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 // 面板开着时,上下与回车归面板 —— 否则回车会把「/rev」当消息发出去
