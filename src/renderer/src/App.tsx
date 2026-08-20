@@ -293,6 +293,16 @@ export default function App(): React.JSX.Element {
         // 只把消息 id 合并进来,不替换 transcript —— 见 mergeMessageIds
         void mergeMessageIds()
       } else if (event.type === 'error') {
+        // 报错也是一种收尾:半截的思考与正文要落进对话流、streaming 清空,
+        // 否则下一轮的增量会接在死流的尾巴上,两轮回答拼成一条
+        setThinking((t) => {
+          if (t) setTranscript((tr) => [...tr, { kind: 'thinking', text: t }])
+          return ''
+        })
+        setStreaming((s) => {
+          if (s) setTranscript((t) => [...t, { kind: 'assistant', text: s, ts: Date.now() }])
+          return ''
+        })
         setError(event.message)
         setBusy(false)
       }
