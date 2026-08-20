@@ -173,6 +173,12 @@ export default function App(): React.JSX.Element {
    * 每轮结束后把消息 id 补进 transcript —— 分支和文件回退都要它,
    * 而直播流里的用户消息不带 uuid,只有 store 里有(§12)。
    *
+   * **按内容配对,不按下标拉链**:store 里可能有直播时没画过的条目
+   * (注入记录虽已在主进程过滤,两边形态仍可能有出入,比如一条助手消息
+   * 被工具行截成两段)。下标一旦错开,其后所有 id 全错 —— 而这些 id 是
+   * rewindFiles 的靶子,配错会真的把文件回退到错误的位置。
+   * 游标单调前进:同一条 stored 不会被用两次;配不上就不给 id,宁缺毋错。
+   *
    * 注意这里**只合并 id,不替换整条 transcript**:SessionMessage 里没有
    * tool_use_result,拿历史整个覆盖会把直播已经收到的 Bash 输出、Edit diff
    * 全抹掉 —— 表现为「一轮结束,工具行的展开按钮就没了」。
@@ -181,17 +187,21 @@ export default function App(): React.JSX.Element {
     const sid = activeSessionRef.current
     if (!sid) return
     const stored = await window.api.sessions.history(sid)
-    // 正面列举哪几种带 id —— 写成「不是 tool 就有」的话,以后每加一种
-    // 不带 id 的条目(比如思考)都会把这里的对位错开一格
-    const hasId = (k: TranscriptItem['kind']): boolean => k === 'user' || k === 'assistant'
-    const ids = stored.flatMap((i) => (hasId(i.kind) && 'id' in i ? [i.id] : []))
+    const candidates = stored.flatMap((i) =>
+      (i.kind === 'user' || i.kind === 'assistant') && i.id
+        ? [{ kind: i.kind, text: i.text.trim(), id: i.id }]
+        : [],
+    )
     setTranscript((cur) => {
-      let n = -1
+      let from = 0
       return cur.map((item) => {
-        if (!hasId(item.kind) || !('id' in item)) return item
-        n += 1
-        const id = ids[n]
-        return id && !item.id ? { ...item, id } : item
+        if (item.kind !== 'user' && item.kind !== 'assistant') return item
+        const at = candidates.findIndex(
+          (c, i) => i >= from && c.kind === item.kind && c.text === item.text.trim(),
+        )
+        if (at < 0) return item
+        from = at + 1
+        return item.id ? item : { ...item, id: candidates[at].id }
       })
     })
   }, [])

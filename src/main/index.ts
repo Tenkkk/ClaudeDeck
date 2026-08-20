@@ -29,7 +29,7 @@ import {
   writeClaudeFile,
 } from './claudedir.js'
 import { annotateSources } from './commands.js'
-import { unexpandSlashCommand } from './history.js'
+import { isInjectedUserText, unexpandSlashCommand } from './history.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
 import type {
   AskAnswer,
@@ -218,6 +218,8 @@ function registerIpc(): void {
       if (role !== 'user' && role !== 'assistant') continue
 
       if (typeof content === 'string') {
+        // CLI 注入的记录(命令输出、压缩前言等)直播时从没画过,回放也不画
+        if (role === 'user' && isInjectedUserText(content)) continue
         // 用户消息可能是被展开过的斜杠命令,还原成人看的样子
         const shown = role === 'user' ? unexpandSlashCommand(content) : content
         if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
@@ -243,6 +245,8 @@ function registerIpc(): void {
           if (at >= 0) out[at] = { kind: 'tool', row: filled }
         }
       }
+      // 块状内容同样要过一道注入检查 —— 工具行已在上面按块推入,不受影响
+      if (role === 'user' && isInjectedUserText(text)) continue
       const shown = role === 'user' ? unexpandSlashCommand(text) : text
       if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
     }
