@@ -132,6 +132,9 @@ export class ChatSession {
     }
   >()
 
+  /** 已 dispose 的会话不再发事件 —— 主动拆掉的流收尾时不该报「断连」 */
+  private disposed = false
+
   sessionId: string | null = null
   /**
    * 这个会话在磁盘上有没有东西。
@@ -645,7 +648,13 @@ export class ChatSession {
     await this.q?.interrupt()
   }
 
-  dispose(): void {
+  /**
+   * @param immediate 同步强杀,不等打断落盘。退出应用时用:before-quit 里
+   *   等不了异步收尾,而 close() 本身是同步的。
+   */
+  dispose(immediate = false): void {
+    if (this.disposed) return
+    this.disposed = true
     for (const resolve of this.pendingPermissions.values()) resolve(false)
     this.pendingPermissions.clear()
     for (const p of this.pendingElicitations.values()) p.resolve(null)
@@ -655,6 +664,34 @@ export class ChatSession {
     for (const r of this.pendingPlans.values()) r(false)
     this.pendingPlans.clear()
     this.inbox.close()
+    const q = this.q
     this.q = null
+    if (!q) return
+    /*
+     * 关 inbox 只是不再喂输入,CLI 进程还活着 —— close() 才是真拆。
+     * 少了它,每次切会话/切 effort/退出都泄漏一个 claude.exe。
+     */
+    if (immediate) {
+      try {
+        q.close()
+      } catch {
+        // 进程已经没了就没什么可关的
+      }
+      return
+    }
+    // 平时先 interrupt,给正在写文件的那一轮一个体面落盘的机会,再杀。
+    // 死进程上的 interrupt 会抛、也可能永不回话,所以吞错并设上限。
+    void (async () => {
+      try {
+        await Promise.race([q.interrupt(), new Promise((r) => setTimeout(r, 1500))])
+      } catch {
+        // 打断失败不影响下面的强杀
+      }
+      try {
+        q.close()
+      } catch {
+        // 同上:已经死了就算了
+      }
+    })()
   }
 }

@@ -466,7 +466,15 @@ void app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  active?.dispose()
+  // 进程马上就要没了,graceful 那条异步路等不到 —— 同步强杀
+  active?.dispose(true)
   active = null
   app.quit()
+})
+
+// 不是所有退出都路过 window-all-closed(应用内更新的 quitAndInstall 就可能
+// 直接走 quit)。这里兜底把 CLI 进程带走;dispose 幂等,两边都到也只拆一次。
+app.on('before-quit', () => {
+  active?.dispose(true)
+  active = null
 })
