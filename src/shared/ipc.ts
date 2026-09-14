@@ -464,6 +464,8 @@ export type TurnStatus = 'compacting' | 'requesting' | 'retrying' | 'limited' | 
 
 export type ChatEvent =
   | { type: 'session'; sessionId: string }
+  /** 已交给当前会话的用户消息,也用于切回后的内存回放。 */
+  | { type: 'sent'; text: string; images: number }
   | { type: 'delta'; text: string }
   /**
    * 思考流。要 options.thinking = {type:'adaptive', display:'summarized'} 才有 ——
@@ -534,6 +536,27 @@ export interface PermissionReply {
   requestId: string
   allow: boolean
 }
+
+/** 仅在本次应用运行中保存,不是 SDK 历史的持久化副本。 */
+export interface TimedChatEvent {
+  event: ChatEvent
+  at: number
+}
+
+export type ChatViewEvent =
+  | { type: 'event'; viewId: string; event: ChatEvent; at: number }
+  | {
+      type: 'restore'
+      viewId: string
+      workspace: string
+      sessionId: string | null
+      history: TranscriptItem[]
+      events: TimedChatEvent[]
+      model: string | null
+      effort: EffortLevel
+      permissionMode: PermissionMode
+    }
+  | { type: 'background'; sessionId: string | null }
 
 /** 粘贴进输入框的图片。base64 交给主进程拼成 image block */
 export interface ImageAttachment {

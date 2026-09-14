@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppConfig,
   AskAnswer,
-  ChatEvent,
+  ChatViewEvent,
   ClaudeEntry,
   ContextUsage,
   AccountInfo,
@@ -30,6 +30,11 @@ import type {
  * The only surface the renderer can reach. contextIsolation stays on and no
  * Node APIs are exposed — the renderer can call exactly these methods.
  */
+let chatViewId = ''
+function invokeChat<T>(channel: string, ...args: unknown[]): Promise<T> {
+  return ipcRenderer.invoke(channel, chatViewId, ...args)
+}
+
 const api = {
   doctor: {
     check: (): Promise<DoctorReport> => ipcRenderer.invoke('doctor:check'),
@@ -115,43 +120,46 @@ const api = {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url),
   },
   chat: {
-    open: (sessionId?: string): Promise<boolean> => ipcRenderer.invoke('chat:open', sessionId),
-    send: (text: string, images?: ImageAttachment[]): Promise<boolean> =>
-      ipcRenderer.invoke('chat:send', text, images),
+    open: (sessionId?: string, viewId = crypto.randomUUID(), workspace?: string): Promise<boolean> => {
+      chatViewId = viewId
+      return ipcRenderer.invoke('chat:open', sessionId, viewId, workspace)
+    },
+    send: (text: string, images?: ImageAttachment[], viewId?: string): Promise<boolean> =>
+      invokeChat('chat:send', text, images, viewId),
     /** 首屏三次控制往返合一;null 时退回逐项拉取 */
-    init: (): Promise<InitInfo | null> => ipcRenderer.invoke('chat:init'),
-    models: (): Promise<ModelOption[]> => ipcRenderer.invoke('chat:models'),
-    commands: (): Promise<SlashCommandItem[]> => ipcRenderer.invoke('chat:commands'),
+    init: (): Promise<InitInfo | null> => invokeChat('chat:init'),
+    models: (): Promise<ModelOption[]> => invokeChat('chat:models'),
+    commands: (): Promise<SlashCommandItem[]> => invokeChat('chat:commands'),
     respondElicitation: (
       id: string,
       values: Record<string, string | boolean> | null,
-    ): Promise<void> => ipcRenderer.invoke('chat:elicitation', id, values),
+    ): Promise<void> => invokeChat('chat:elicitation', id, values),
     respondAsk: (id: string, answer: AskAnswer | null): Promise<void> =>
-      ipcRenderer.invoke('chat:ask', id, answer),
+      invokeChat('chat:ask', id, answer),
     respondPlan: (id: string, accepted: boolean): Promise<void> =>
-      ipcRenderer.invoke('chat:plan', id, accepted),
-    stopTask: (taskId: string): Promise<void> => ipcRenderer.invoke('chat:stopTask', taskId),
-    toBackground: (): Promise<boolean> => ipcRenderer.invoke('chat:toBackground'),
-    usage: (): Promise<UsageInfo | null> => ipcRenderer.invoke('chat:usage'),
-    context: (): Promise<ContextUsage | null> => ipcRenderer.invoke('chat:context'),
-    mcp: (): Promise<McpServer[]> => ipcRenderer.invoke('chat:mcp'),
+      invokeChat('chat:plan', id, accepted),
+    stopTask: (taskId: string): Promise<void> => invokeChat('chat:stopTask', taskId),
+    toBackground: (): Promise<boolean> => invokeChat('chat:toBackground'),
+    usage: (): Promise<UsageInfo | null> => invokeChat('chat:usage'),
+    context: (): Promise<ContextUsage | null> => invokeChat('chat:context'),
+    mcp: (): Promise<McpServer[]> => invokeChat('chat:mcp'),
     mcpReconnect: (name: string): Promise<string | null> =>
-      ipcRenderer.invoke('chat:mcpReconnect', name),
+      invokeChat('chat:mcpReconnect', name),
     mcpToggle: (name: string, enabled: boolean): Promise<string | null> =>
-      ipcRenderer.invoke('chat:mcpToggle', name, enabled),
+      invokeChat('chat:mcpToggle', name, enabled),
     /** needs-auth 的出路:让 CLI 走该服务的授权流 */
-    mcpAuth: (name: string): Promise<string | null> => ipcRenderer.invoke('chat:mcpAuth', name),
-    agents: (): Promise<AgentInfo[]> => ipcRenderer.invoke('chat:agents'),
-    account: (): Promise<AccountInfo | null> => ipcRenderer.invoke('chat:account'),
-    interrupt: (): Promise<void> => ipcRenderer.invoke('chat:interrupt'),
-    setModel: (model: string): Promise<void> => ipcRenderer.invoke('chat:setModel', model),
-    setEffort: (effort: EffortLevel): Promise<void> => ipcRenderer.invoke('chat:setEffort', effort),
+    mcpAuth: (name: string): Promise<string | null> => invokeChat('chat:mcpAuth', name),
+    agents: (): Promise<AgentInfo[]> => invokeChat('chat:agents'),
+    account: (): Promise<AccountInfo | null> => invokeChat('chat:account'),
+    interrupt: (): Promise<void> => invokeChat('chat:interrupt'),
+    setModel: (model: string): Promise<void> => invokeChat('chat:setModel', model),
+    setEffort: (effort: EffortLevel): Promise<void> => invokeChat('chat:setEffort', effort),
     setPermissionMode: (mode: PermissionMode): Promise<void> =>
-      ipcRenderer.invoke('chat:setPermissionMode', mode),
+      invokeChat('chat:setPermissionMode', mode),
     respondPermission: (requestId: string, allow: boolean, remember = false): Promise<void> =>
-      ipcRenderer.invoke('chat:permission', requestId, allow, remember),
-    onEvent: (handler: (event: ChatEvent) => void): (() => void) => {
-      const listener = (_e: unknown, event: ChatEvent): void => handler(event)
+      invokeChat('chat:permission', requestId, allow, remember),
+    onEvent: (handler: (event: ChatViewEvent) => void): (() => void) => {
+      const listener = (_e: unknown, event: ChatViewEvent): void => handler(event)
       ipcRenderer.on('chat:event', listener)
       return () => ipcRenderer.removeListener('chat:event', listener)
     },
