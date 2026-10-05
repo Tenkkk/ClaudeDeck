@@ -217,6 +217,8 @@ export class ChatSession {
         model: opts.model ?? undefined,
         effort: opts.effort,
         permissionMode: opts.permissionMode,
+        // 只允许后续切换,不主动放行;实际权限仍由 permissionMode 决定。
+        allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
         // 不写这条就完全拿不到思考流 —— 只设 effort 是没有的(实测)。
         // summarized 是 Claude Code 自己也在用的那档:给要点,不是逐字原文。
@@ -666,6 +668,7 @@ export class ChatSession {
     const resolve = this.pendingAsks.get(id)
     if (!resolve) return
     this.pendingAsks.delete(id)
+    this.emit({ type: 'dismiss', card: 'ask', id })
     resolve(answer)
   }
 
@@ -673,6 +676,7 @@ export class ChatSession {
     const resolve = this.pendingPlans.get(id)
     if (!resolve) return
     this.pendingPlans.delete(id)
+    this.emit({ type: 'dismiss', card: 'plan', id })
     resolve(accepted)
   }
 
@@ -681,6 +685,7 @@ export class ChatSession {
     const pending = this.pendingElicitations.get(id)
     if (!pending) return
     this.pendingElicitations.delete(id)
+    this.emit({ type: 'dismiss', card: 'elicitation', id })
     pending.resolve(values)
   }
 
@@ -693,6 +698,7 @@ export class ChatSession {
     const settle = this.pendingPermissions.get(requestId)
     if (!settle) return
     this.pendingPermissions.delete(requestId)
+    this.emit({ type: 'dismiss', card: 'permission', id: requestId })
     settle({ allow, remember })
   }
 
@@ -710,9 +716,9 @@ export class ChatSession {
   }
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
-    // 本地这份也要更新 —— canUseTool 按它决定哪些不必再问
-    this.permissionMode = mode
     await this.q?.setPermissionMode(mode)
+    // CLI 确认后再更新,失败时不能让本地放行逻辑与实际权限分叉。
+    this.permissionMode = mode
   }
 
   async listCommands(): Promise<

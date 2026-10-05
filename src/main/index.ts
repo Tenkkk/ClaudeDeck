@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
@@ -9,7 +9,7 @@ import {
   renameSession,
   tagSession,
 } from '@anthropic-ai/claude-agent-sdk'
-import { ChatSession } from './chat.js'
+import { SessionPool } from './session-pool.js'
 import {
   addProject,
   getConfig,
@@ -34,7 +34,7 @@ import { applyToolResult, rowFromToolUse } from './tools.js'
 import { appendTool, replaceTool } from '../shared/transcript.js'
 import type {
   AskAnswer,
-  ChatEvent,
+  ChatViewEvent,
   ClaudeEntry,
   EffortLevel,
   FileEntry,
@@ -54,10 +54,10 @@ import type {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
-let active: ChatSession | null = null
+const sessions = new SessionPool(emit)
 let updater: Updater | null = null
 
-function emit(event: ChatEvent): void {
+function emit(event: ChatViewEvent): void {
   // 退出路径上 dispose 也会发事件(收卡),那时窗口可能已经销毁
   if (!mainWindow || mainWindow.isDestroyed()) return
   mainWindow.webContents.send('chat:event', event)
@@ -79,8 +79,7 @@ function knownProject(path: string): boolean {
  * 至少把进程树带走、把死因亮出来,再退出。
  */
 process.on('uncaughtException', (err) => {
-  active?.dispose(true)
-  active = null
+  sessions.dispose()
   dialog.showErrorBox('ClaudeDeck 出错了', err.stack ?? String(err))
   app.exit(1)
 })
@@ -119,8 +118,7 @@ function createWindow(): void {
     if (details.reason === 'clean-exit') return
     const now = Date.now()
     if (now - lastRendererCrash < 10_000) {
-      active?.dispose(true)
-      active = null
+      sessions.dispose()
       dialog.showErrorBox('ClaudeDeck 界面反复崩溃', `原因:${details.reason}`)
       app.exit(1)
       return
@@ -150,30 +148,118 @@ function createWindow(): void {
   }
 }
 
-/** Starts (or restarts) the live conversation. */
-function openSession(resume?: string): void {
+/** 只切换查看对象;已打开的会话由 SessionPool 继续持有。 */
+async function openSession(resume?: string, viewId = '', workspace?: string): Promise<boolean> {
   const config = getConfig()
-  if (!config.activeWorkspace) throw new Error('尚未选择工作目录。')
+  const cwd = workspace ?? config.activeWorkspace
+  if (!cwd || !knownProject(cwd)) throw new Error('尚未选择有效的工作目录。')
+  const opened = await sessions.open({
+    cwd, resume, model: config.model, effort: config.effort, permissionMode: config.permissionMode,
+  }, viewId, readHistory)
+  if (opened && sessions.matches(viewId) && sessions.current) {
+    setActiveWorkspace(cwd)
+    const { model, effort, permissionMode } = sessions.current.options
+    updateConfig({ model, effort, permissionMode })
+  }
+  return opened
+}
 
-  active?.dispose()
-
-  /*
-   * 事件带着「是哪个会话发的」再出门。
-   *
-   * 切会话时旧 query 正在输出的话,它的 delta 还会在管道里飘一会儿;
-   * 直接转发出去的话,上一轮的回答会接在新会话的对话流下面。
-   * 这里认对象身份:不是当前这个 session 发的,一律丢弃。
-   */
-  const session = new ChatSession((event) => {
-    if (session === active) emit(event)
+async function readHistory(sessionId: string, cwd: string): Promise<TranscriptItem[]> {
+  const messages = await getSessionMessages(sessionId, {
+    dir: cwd,
   })
-  active = session
-  session.start({
-    cwd: config.activeWorkspace,
-    resume,
-    model: config.model,
-    effort: config.effort,
-    permissionMode: config.permissionMode,
+
+  let out: TranscriptItem[] = []
+  const rowsById = new Map<string, ToolRow>()
+
+  interface Block {
+    type?: string
+    text?: string
+    thinking?: string
+    id?: string
+    name?: string
+    input?: unknown
+    tool_use_id?: string
+    is_error?: boolean
+  }
+  interface Msg {
+    uuid?: string
+    message?: { role?: string; content?: unknown }
+    tool_use_result?: unknown
+  }
+
+  for (const raw of messages as Msg[]) {
+    const role = raw.message?.role
+    const content = raw.message?.content
+    if (role !== 'user' && role !== 'assistant') continue
+
+    if (typeof content === 'string') {
+      // CLI 注入的记录(命令输出、压缩前言等)直播时从没画过,回放也不画
+      if (role === 'user' && isInjectedUserText(content)) continue
+      // 用户消息可能是被展开过的斜杠命令,还原成人看的样子
+      const shown = role === 'user' ? unexpandSlashCommand(content) : content
+      if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
+      continue
+    }
+    if (!Array.isArray(content)) continue
+
+    let text = ''
+    let imageCount = 0
+    const flushText = (): void => {
+      if (!(role === 'user' && isInjectedUserText(text))) {
+        const shown = role === 'user' ? unexpandSlashCommand(text) : text
+        // 图片正文里看不见,至少把「带了几张」还原出来;纯图消息也要占位
+        if (shown.trim() || imageCount > 0) {
+          if (role === 'user') {
+            out.push({
+              kind: 'user',
+              text: shown,
+              id: raw.uuid,
+              ...(imageCount > 0 ? { images: imageCount } : {}),
+            })
+          } else {
+            out.push({ kind: 'assistant', text: shown, id: raw.uuid })
+          }
+          imageCount = 0
+        }
+      }
+      text = ''
+    }
+    for (const b of content as Block[]) {
+      if (b.type === 'text' && b.text) {
+        text += b.text
+      } else if (b.type === 'image') {
+        imageCount++
+      } else if (b.type === 'thinking' && b.thinking) {
+        // 思考也要回放 —— 不然切走再切回,思考块全部消失
+        out.push({ kind: 'thinking', text: b.thinking })
+      } else if (b.type === 'tool_use' && b.id && b.name) {
+        flushText()
+        const row = rowFromToolUse(b.id, b.name, b.input)
+        rowsById.set(b.id, row)
+        out = appendTool(out, row)
+      } else if (b.type === 'tool_result' && b.tool_use_id) {
+        const pending = rowsById.get(b.tool_use_id)
+        if (!pending) continue
+        const filled = applyToolResult(pending, raw.tool_use_result, b.is_error === true)
+        rowsById.set(b.tool_use_id, filled)
+        out = replaceTool(out, filled)
+      }
+    }
+    flushText()
+  }
+
+  return out
+}
+
+/** 每个请求绑定发起时的视图,排队中的旧操作不能落到另一条会话上。 */
+function handleChat<Args extends unknown[], Result>(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: Args) => Result,
+): void {
+  ipcMain.handle(channel, (event, viewId: string, ...args: Args) => {
+    if (!sessions.matches(viewId)) throw new Error('会话已切换或尚未准备好,请重试。')
+    return handler(event, ...args)
   })
 }
 
@@ -204,7 +290,10 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('projects:activate', (_e, path: string) => setActiveWorkspace(path))
-  ipcMain.handle('projects:remove', (_e, path: string) => removeProject(path))
+  ipcMain.handle('projects:remove', (_e, path: string) => {
+    sessions.remove(path)
+    return removeProject(path)
+  })
   ipcMain.handle('projects:collapse', (_e, path: string, collapsed: boolean) =>
     setProjectCollapsed(path, collapsed),
   )
@@ -250,94 +339,9 @@ function registerIpc(): void {
    * 处截断 —— 否则同一条消息回放出来是「先工具后正文」,和直播相反,
    * id 按内容配对也会配不上。
    */
-  ipcMain.handle('sessions:history', async (_e, sessionId: string): Promise<TranscriptItem[]> => {
-    const config = getConfig()
-    const messages = await getSessionMessages(sessionId, {
-      dir: config.activeWorkspace ?? undefined,
-    })
-
-    let out: TranscriptItem[] = []
-    const rowsById = new Map<string, ToolRow>()
-
-    interface Block {
-      type?: string
-      text?: string
-      thinking?: string
-      id?: string
-      name?: string
-      input?: unknown
-      tool_use_id?: string
-      is_error?: boolean
-    }
-    interface Msg {
-      uuid?: string
-      message?: { role?: string; content?: unknown }
-      tool_use_result?: unknown
-    }
-
-    for (const raw of messages as Msg[]) {
-      const role = raw.message?.role
-      const content = raw.message?.content
-      if (role !== 'user' && role !== 'assistant') continue
-
-      if (typeof content === 'string') {
-        // CLI 注入的记录(命令输出、压缩前言等)直播时从没画过,回放也不画
-        if (role === 'user' && isInjectedUserText(content)) continue
-        // 用户消息可能是被展开过的斜杠命令,还原成人看的样子
-        const shown = role === 'user' ? unexpandSlashCommand(content) : content
-        if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
-        continue
-      }
-      if (!Array.isArray(content)) continue
-
-      let text = ''
-      let imageCount = 0
-      const flushText = (): void => {
-        if (!(role === 'user' && isInjectedUserText(text))) {
-          const shown = role === 'user' ? unexpandSlashCommand(text) : text
-          // 图片正文里看不见,至少把「带了几张」还原出来;纯图消息也要占位
-          if (shown.trim() || imageCount > 0) {
-            if (role === 'user') {
-              out.push({
-                kind: 'user',
-                text: shown,
-                id: raw.uuid,
-                ...(imageCount > 0 ? { images: imageCount } : {}),
-              })
-            } else {
-              out.push({ kind: 'assistant', text: shown, id: raw.uuid })
-            }
-            imageCount = 0
-          }
-        }
-        text = ''
-      }
-      for (const b of content as Block[]) {
-        if (b.type === 'text' && b.text) {
-          text += b.text
-        } else if (b.type === 'image') {
-          imageCount++
-        } else if (b.type === 'thinking' && b.thinking) {
-          // 思考也要回放 —— 不然切走再切回,思考块全部消失
-          out.push({ kind: 'thinking', text: b.thinking })
-        } else if (b.type === 'tool_use' && b.id && b.name) {
-          flushText()
-          const row = rowFromToolUse(b.id, b.name, b.input)
-          rowsById.set(b.id, row)
-          out = appendTool(out, row)
-        } else if (b.type === 'tool_result' && b.tool_use_id) {
-          const pending = rowsById.get(b.tool_use_id)
-          if (!pending) continue
-          const filled = applyToolResult(pending, raw.tool_use_result, b.is_error === true)
-          rowsById.set(b.tool_use_id, filled)
-          out = replaceTool(out, filled)
-        }
-      }
-      flushText()
-    }
-
-    return out
-  })
+  ipcMain.handle('sessions:history', (_e, sessionId: string) =>
+    readHistory(sessionId, getConfig().activeWorkspace ?? ''),
+  )
 
   ipcMain.handle('sessions:rename', (_e, sessionId: string, title: string) => {
     const config = getConfig()
@@ -370,7 +374,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'sessions:rewindPreview',
     async (_e, messageId: string): Promise<RewindPreview> => {
-      const r = await active?.rewindPreview(messageId)
+      const r = await sessions.active?.rewindPreview(messageId)
       if (!r) return { canRewind: false, fileCount: 0, reason: '当前没有活着的会话。' }
       return {
         canRewind: r.canRewind,
@@ -387,7 +391,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'sessions:forkFrom',
     async (_e, sessionId: string, messageId: string, rewind: boolean, title?: string) => {
-      if (rewind) await active?.rewindFiles(messageId)
+      if (rewind) await sessions.active?.rewindFiles(messageId)
       const config = getConfig()
       const result = await forkSession(sessionId, {
         dir: config.activeWorkspace ?? undefined,
@@ -400,6 +404,7 @@ function registerIpc(): void {
 
   ipcMain.handle('sessions:delete', (_e, sessionId: string) => {
     const config = getConfig()
+    if (config.activeWorkspace) sessions.remove(config.activeWorkspace, sessionId)
     return deleteSession(sessionId, { dir: config.activeWorkspace ?? undefined })
   })
 
@@ -479,92 +484,98 @@ function registerIpc(): void {
         projectPath === getConfig().activeWorkspace &&
         /^\.claude\/(skills|commands)\//.test(relPath)
       ) {
-        void active?.reloadSkills()
+        void sessions.active?.reloadSkills()
       }
       return result
     },
   )
 
-  ipcMain.handle('chat:open', (_e, sessionId?: string) => {
-    openSession(sessionId)
-    return true
-  })
+  ipcMain.handle('chat:open', (_e, sessionId?: string, viewId?: string, workspace?: string) =>
+    openSession(sessionId, viewId, workspace),
+  )
 
-  ipcMain.handle('chat:send', (_e, text: string, images?: ImageAttachment[]) => {
-    /*
-     * query 死了(CLI 进程崩了/断连)就先原地重开再发:往死 query 的
-     * inbox 里推消息没人消费,表现是又一次永久转圈。resume 同一条会话,
-     * 没落过盘的空会话则直接开新的(resumable 挡住「resume 不存在的 id」)。
-     */
-    if (!active || active.dead) openSession(active?.resumable ?? undefined)
-    active?.send(text, images ?? [])
+  handleChat('chat:send', async (_e, text: string, images?: ImageAttachment[], viewId?: string) => {
+    // 死会话仍可原地恢复,但切换中的空指针不能偷偷创建另一条会话。
+    const current = sessions.current
+    if (!current) throw new Error('会话尚未准备好,请稍后再试。')
+    if (current.session.dead) {
+      const opened = await openSession(current.session.resumable ?? undefined, viewId, current.options.cwd)
+      if (!opened || !sessions.matches(viewId ?? '')) return false
+    }
+    sessions.send(text, images ?? [])
     return true
   })
 
   /** 首屏三次控制往返合一;拿不到返回 null,渲染层退回逐项拉 */
-  ipcMain.handle('chat:init', () => active?.initInfo() ?? null)
+  handleChat('chat:init', () => sessions.active?.initInfo() ?? null)
 
-  ipcMain.handle('chat:models', () => active?.listModels() ?? [])
+  handleChat('chat:models', () => sessions.active?.listModels() ?? [])
 
   /** 命令列表由 SDK 运行时给,界面不写死任何一条;来源在主进程标注(§15)。 */
-  ipcMain.handle('chat:commands', async (): Promise<SlashCommandItem[]> => {
-    const raw = (await active?.listCommands()) ?? []
+  handleChat('chat:commands', async (): Promise<SlashCommandItem[]> => {
+    const raw = (await sessions.active?.listCommands()) ?? []
     return annotateSources(raw, getConfig().activeWorkspace)
   })
-  ipcMain.handle(
+  handleChat(
     'chat:elicitation',
     (_e, id: string, values: Record<string, string | boolean> | null) => {
-      active?.answerElicitation(id, values)
+      sessions.active?.answerElicitation(id, values)
     },
   )
-  ipcMain.handle('chat:ask', (_e, id: string, answer: AskAnswer | null) => {
-    active?.answerAsk(id, answer)
+  handleChat('chat:ask', (_e, id: string, answer: AskAnswer | null) => {
+    sessions.active?.answerAsk(id, answer)
   })
-  ipcMain.handle('chat:plan', (_e, id: string, accepted: boolean) => {
-    active?.answerPlan(id, accepted)
+  handleChat('chat:plan', (_e, id: string, accepted: boolean) => {
+    sessions.active?.answerPlan(id, accepted)
   })
-  ipcMain.handle('chat:stopTask', (_e, taskId: string) => active?.stopTask(taskId))
-  ipcMain.handle('chat:toBackground', () => active?.moveToBackground() ?? false)
-  ipcMain.handle('chat:usage', () => active?.usage() ?? null)
-  ipcMain.handle('chat:context', () => active?.contextUsage() ?? null)
-  ipcMain.handle('chat:mcp', () => active?.mcpServers() ?? [])
-  ipcMain.handle('chat:mcpReconnect', (_e, name: string) => active?.mcpReconnect(name) ?? '会话未启动')
-  ipcMain.handle('chat:mcpToggle', (_e, name: string, enabled: boolean) =>
-    active?.mcpToggle(name, enabled) ?? '会话未启动',
+  handleChat('chat:stopTask', (_e, taskId: string) => sessions.active?.stopTask(taskId))
+  handleChat('chat:toBackground', () => sessions.active?.moveToBackground() ?? false)
+  handleChat('chat:usage', () => sessions.active?.usage() ?? null)
+  handleChat('chat:context', () => sessions.active?.contextUsage() ?? null)
+  handleChat('chat:mcp', () => sessions.active?.mcpServers() ?? [])
+  handleChat('chat:mcpReconnect', (_e, name: string) => sessions.active?.mcpReconnect(name) ?? '会话未启动')
+  handleChat('chat:mcpToggle', (_e, name: string, enabled: boolean) =>
+    sessions.active?.mcpToggle(name, enabled) ?? '会话未启动',
   )
-  ipcMain.handle('chat:mcpAuth', (_e, name: string) =>
-    active?.mcpAuthenticate(name) ?? '会话未启动',
+  handleChat('chat:mcpAuth', (_e, name: string) =>
+    sessions.active?.mcpAuthenticate(name) ?? '会话未启动',
   )
-  ipcMain.handle('chat:agents', () => active?.agents() ?? [])
-  ipcMain.handle('chat:account', () => active?.account() ?? null)
+  handleChat('chat:agents', () => sessions.active?.agents() ?? [])
+  handleChat('chat:account', () => sessions.active?.account() ?? null)
 
   ipcMain.handle('app:versions', async (): Promise<Versions> => {
     const report = await runDoctor()
     return { app: app.getVersion(), cli: report.cliVersion ?? null }
   })
 
-  ipcMain.handle('chat:interrupt', () => active?.interrupt())
-  ipcMain.handle(
+  handleChat('chat:interrupt', () => sessions.active?.interrupt())
+  handleChat(
     'chat:permission',
     (_e, requestId: string, allow: boolean, remember: boolean) => {
-      active?.answerPermission(requestId, allow, remember)
+      sessions.active?.answerPermission(requestId, allow, remember)
     },
   )
 
   // Model and permission mode change in place — history is untouched.
-  ipcMain.handle('chat:setModel', async (_e, model: string) => {
-    updateConfig({ model })
-    await active?.setModel(model)
+  handleChat('chat:setModel', async (_e, model: string) => {
+    const current = sessions.current
+    await current?.session.setModel(model)
+    if (current) current.options.model = model
+    if (current === sessions.current) updateConfig({ model })
   })
 
-  ipcMain.handle('chat:setPermissionMode', async (_e, mode: PermissionMode) => {
-    updateConfig({ permissionMode: mode })
-    await active?.setPermissionMode(mode)
+  handleChat('chat:setPermissionMode', async (_e, mode: PermissionMode) => {
+    const current = sessions.current
+    await current?.session.setPermissionMode(mode)
+    if (current) current.options.permissionMode = mode
+    if (current === sessions.current) updateConfig({ permissionMode: mode })
   })
 
-  ipcMain.handle('chat:setEffort', async (_e, effort: EffortLevel) => {
-    updateConfig({ effort })
-    await active?.setEffort(effort)
+  handleChat('chat:setEffort', async (_e, effort: EffortLevel) => {
+    const current = sessions.current
+    await current?.session.setEffort(effort)
+    if (current) current.options.effort = effort
+    if (current === sessions.current) updateConfig({ effort })
   })
 }
 
@@ -579,14 +590,12 @@ void app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   // 进程马上就要没了,graceful 那条异步路等不到 —— 同步强杀
-  active?.dispose(true)
-  active = null
+  sessions.dispose()
   app.quit()
 })
 
 // 不是所有退出都路过 window-all-closed(应用内更新的 quitAndInstall 就可能
 // 直接走 quit)。这里兜底把 CLI 进程带走;dispose 幂等,两边都到也只拆一次。
 app.on('before-quit', () => {
-  active?.dispose(true)
-  active = null
+  sessions.dispose()
 })

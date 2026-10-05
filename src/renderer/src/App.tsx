@@ -161,12 +161,18 @@ export default function App(): React.JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading')
   const [doctor, setDoctor] = useState<DoctorReport | null>(null)
   const [config, setConfig] = useState<AppConfig | null>(null)
+  const permissionChanging = useRef(false)
   const [sessionsByProject, setSessionsByProject] = useState<Record<string, SessionListItem[]>>({})
   const [expandedAll, setExpandedAll] = useState<Record<string, boolean>>({})
   const [activeSession, setActiveSession] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptItem[]>([])
   const [streaming, setStreaming] = useState('')
   const [thinking, setThinking] = useState('')
+  const streamingBuffer = useRef('')
+  const thinkingBuffer = useRef('')
+  const viewIdRef = useRef('')
+  const switchingRef = useRef(false)
+  const [switching, setSwitching] = useState(false)
   const [busy, setBusy] = useState(false)
   const [models, setModels] = useState<ModelOption[]>([])
   const [usage, setUsage] = useState<UsageInfo | null>(null)
@@ -242,10 +248,11 @@ export default function App(): React.JSX.Element {
    */
   const mergeMessageIds = useCallback(async () => {
     const sid = activeSessionRef.current
+    const viewId = viewIdRef.current
     if (!sid) return
     const stored = await window.api.sessions.history(sid)
     // 等 history 的空当里可能已经切走了 —— 旧会话的 id 不能盖到新对话上
-    if (activeSessionRef.current !== sid) return
+    if (activeSessionRef.current !== sid || viewIdRef.current !== viewId) return
     const candidates = stored.flatMap((i) =>
       (i.kind === 'user' || i.kind === 'assistant') && i.id
         ? [{ kind: i.kind, text: i.text.trim(), id: i.id }]
@@ -281,9 +288,17 @@ export default function App(): React.JSX.Element {
 
   /** 额度与上下文都随对话变化,每轮结束刷新一次。 */
   const refreshMeters = useCallback(async () => {
-    const [u, c] = await Promise.all([window.api.chat.usage(), window.api.chat.context()])
-    setUsage(u)
-    setContext(c)
+    const viewId = viewIdRef.current
+    try {
+      const [u, c] = await Promise.all([window.api.chat.usage(), window.api.chat.context()])
+      if (viewIdRef.current !== viewId) return
+      setUsage(u)
+      setContext(c)
+    } catch (err) {
+      if (viewIdRef.current === viewId && !switchingRef.current) {
+        setError(`会话状态读取失败:${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
   }, [])
 
   /**
@@ -292,11 +307,11 @@ export default function App(): React.JSX.Element {
    * 所以 delta / thinking / tool 一到就打点。busyRef 挡住重复重置。
    */
   const busyRef = useRef(false)
-  const markBusy = useCallback(() => {
+  const markBusy = useCallback((at = Date.now()) => {
     if (busyRef.current) return
     busyRef.current = true
     setBusy(true)
-    setTurnStartedAt(Date.now())
+    setTurnStartedAt(at)
     setTurnStatus(null)
     setOutputTokens(0)
   }, [])
@@ -320,20 +335,26 @@ export default function App(): React.JSX.Element {
   }, [reload])
 
   useEffect(() => {
-    return window.api.chat.onEvent((event: ChatEvent) => {
+    const handleEvent = (event: ChatEvent, at: number, replaying = false): void => {
       /** 把攒着的思考定格落进对话流 —— 正文开口、工具插入、轮次收尾都要 */
       const flushThinking = (): void => {
-        setThinking((t) => {
-          if (t) setTranscript((tr) => [...tr, stamp({ kind: 'thinking', text: t })])
-          return ''
-        })
+        const text = thinkingBuffer.current
+        thinkingBuffer.current = ''
+        setThinking('')
+        if (text) {
+          const item = stamp({ kind: 'thinking', text })
+          setTranscript((tr) => [...tr, item])
+        }
       }
       /** 把已经流出来的正文定格 —— 工具行插在正文之间时、轮次收尾时 */
       const flushStreaming = (): void => {
-        setStreaming((s) => {
-          if (s) setTranscript((t) => [...t, stamp({ kind: 'assistant', text: s, ts: Date.now() })])
-          return ''
-        })
+        const text = streamingBuffer.current
+        streamingBuffer.current = ''
+        setStreaming('')
+        if (text) {
+          const item = stamp({ kind: 'assistant', text, ts: at })
+          setTranscript((tr) => [...tr, item])
+        }
       }
       if (event.type === 'session') {
         setActiveSession(event.sessionId)
@@ -341,17 +362,27 @@ export default function App(): React.JSX.Element {
         // 一发出去侧栏就该多出这条,而不是等这一轮答完。session_id 在本轮
         // 第一条消息上就有了,这时 SDK 的 store 里已经落了盘,列得出来。
         // 标题是 Claude 生成的,会晚一点变 —— done 时再刷一次盖上去。
-        void refreshSessions()
+        if (!replaying) void refreshSessions()
+      } else if (event.type === 'sent') {
+        const item = stamp({
+          kind: 'user', text: event.text, ts: at,
+          ...(event.images > 0 ? { images: event.images } : {}),
+        })
+        setTranscript((tr) => [...tr, item])
+        setError(null)
+        markBusy(at)
       } else if (event.type === 'thinking') {
-        markBusy()
-        setThinking((t) => t + event.text)
+        markBusy(at)
+        thinkingBuffer.current += event.text
+        setThinking(thinkingBuffer.current)
       } else if (event.type === 'delta') {
-        markBusy()
+        markBusy(at)
         // 正文一开口,思考就该定下来落进对话流 —— 它属于这一段回答之前
         flushThinking()
-        setStreaming((s) => s + event.text)
+        streamingBuffer.current += event.text
+        setStreaming(streamingBuffer.current)
       } else if (event.type === 'tool') {
-        markBusy()
+        markBusy(at)
         // 工具行插在正文之间,所以先把已经流出来的文字定下来
         flushThinking()
         flushStreaming()
@@ -384,10 +415,11 @@ export default function App(): React.JSX.Element {
           setLimitNotice(when ? `额度已达上限,预计 ${when} 重置` : '额度已达上限,等待重置')
         }
         // 无论警告还是拒绝,额度环都该立刻反映最新占用
-        void refreshMeters()
+        if (!replaying) void refreshMeters()
       } else if (event.type === 'compacted') {
         // 压缩要留痕 —— 否则「它怎么忘了前面说的」无从解释
-        setTranscript((t) => [...t, stamp({ kind: 'compact' })])
+        const item = stamp({ kind: 'compact' })
+        setTranscript((t) => [...t, item])
       } else if (event.type === 'commands') {
         setCommands(event.commands)
       } else if (event.type === 'progress') {
@@ -431,10 +463,10 @@ export default function App(): React.JSX.Element {
         busyRef.current = false
         setBusy(false)
         setLimitNotice(null)
-        void refreshSessions()
-        void refreshMeters()
+        if (!replaying) void refreshSessions()
+        if (!replaying) void refreshMeters()
         // 只把消息 id 合并进来,不替换 transcript —— 见 mergeMessageIds
-        void mergeMessageIds()
+        if (!replaying) void mergeMessageIds()
       } else if (event.type === 'error') {
         // 报错也是一种收尾:半截的思考与正文要落进对话流、streaming 清空,
         // 否则下一轮的增量会接在死流的尾巴上,两轮回答拼成一条
@@ -444,6 +476,27 @@ export default function App(): React.JSX.Element {
         busyRef.current = false
         setBusy(false)
       }
+    }
+    return window.api.chat.onEvent((message) => {
+      if (message.type === 'background') {
+        void refreshSessions()
+        return
+      }
+      if (message.viewId !== viewIdRef.current) return
+      if (message.type === 'restore') {
+        resetTurnState()
+        setTranscript(message.history.map(stamp))
+        setActiveSession(message.sessionId)
+        activeSessionRef.current = message.sessionId
+        setPendingSession(null)
+        setConfig((c) => c ? {
+          ...c, activeWorkspace: message.workspace, model: message.model,
+          effort: message.effort, permissionMode: message.permissionMode,
+        } : c)
+        for (const { event, at } of message.events) handleEvent(event, at, true)
+        return
+      }
+      handleEvent(message.event, message.at)
     })
   }, [refreshSessions, refreshMeters, mergeMessageIds, markBusy])
 
@@ -492,21 +545,8 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     if (phase !== 'workspace') return
     void refreshSessions()
-    void window.api.chat.open().then(async () => {
-      // 首屏一次拿齐(命令 / 模型 / 账号本来是三次控制往返);
-      // 拿不到就退回逐项拉
-      const init = await window.api.chat.init()
-      if (init) {
-        setModels(init.models)
-        setAccount(init.account)
-        setCommands(init.commands)
-      } else {
-        setModels(await window.api.chat.models())
-        setAccount(await window.api.chat.account())
-        setCommands(await window.api.chat.commands())
-      }
-      await refreshMeters()
-    })
+    void newSession()
+
   }, [phase, refreshSessions, refreshMeters])
 
   /**
@@ -568,6 +608,8 @@ export default function App(): React.JSX.Element {
    * (轮内的取消由主进程按请求发 dismiss 事件精确收卡,这里只管换会话。)
    */
   function resetTurnState(): void {
+    streamingBuffer.current = ''
+    thinkingBuffer.current = ''
     setStreaming('')
     setThinking('')
     busyRef.current = false
@@ -582,46 +624,63 @@ export default function App(): React.JSX.Element {
     setUnknownDialog(null)
   }
 
-  /** 点别的项目里的会话 = 隐式切换 activeWorkspace 再 resume · §2.1 */
+  /** 每次选择先更换视图标识,旧事件和旧异步结果立即失效。 */
   const openGen = useRef(0)
-  async function openSession(projectPath: string, sessionId: string): Promise<void> {
-    /*
-     * 代际守卫:快速连点两条会话,两次 openSession 的 await 会交错 ——
-     * 后点的先回来、先点的后回来,于是标题是 B、正文是 A。
-     * 每次进来领一个代数,每个 await 回来先看世界还是不是自己的,
-     * 不是就直接退场,半点不许再落。
-     */
+  async function selectSession(projectPath?: string, sessionId?: string): Promise<void> {
     const gen = ++openGen.current
-    // 主进程已经不再转发旧会话的事件,但界面上已画出来的要自己收拾
+    const viewId = crypto.randomUUID()
+    viewIdRef.current = viewId
+    switchingRef.current = true
+    setSwitching(true)
     resetTurnState()
-    if (projectPath !== config?.activeWorkspace) {
-      const next = await window.api.projects.activate(projectPath)
+    setActiveSession(sessionId ?? null)
+    activeSessionRef.current = sessionId ?? null
+    setTranscript([])
+    setModels([])
+    setCommands([])
+    setUsage(null)
+    setContext(null)
+    try {
+      const opened = await window.api.chat.open(sessionId, viewId, projectPath)
+      if (!opened || gen !== openGen.current) return
+      const init = await window.api.chat.init()
       if (gen !== openGen.current) return
-      setConfig(next)
+      if (init) {
+        setModels(init.models)
+        setAccount(init.account)
+        setCommands(init.commands)
+      } else {
+        const [models, account, commands] = await Promise.all([
+          window.api.chat.models(), window.api.chat.account(), window.api.chat.commands(),
+        ])
+        if (gen !== openGen.current) return
+        setModels(models)
+        setAccount(account)
+        setCommands(commands)
+      }
+      await refreshMeters()
+      if (gen !== openGen.current) return
+      void refreshSessions()
+    } catch (err) {
+      if (gen === openGen.current) setError(`会话打开失败:${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      if (gen === openGen.current) {
+        switchingRef.current = false
+        setSwitching(false)
+      }
     }
-    setActiveSession(sessionId)
-    activeSessionRef.current = sessionId
-    const history = await window.api.sessions.history(sessionId)
-    if (gen !== openGen.current) return
-    setTranscript(history.map(stamp))
-    await window.api.chat.open(sessionId)
-    if (gen !== openGen.current) return
-    setModels(await window.api.chat.models())
-    await refreshMeters()
   }
 
-  async function newSession(): Promise<void> {
-    // 新建也占一代,让还在路上的 openSession 作废
-    openGen.current += 1
-    setActiveSession(null)
-    activeSessionRef.current = null
-    setTranscript([])
-    resetTurnState()
-    await window.api.chat.open()
-    await refreshMeters()
+  async function openSession(projectPath: string, sessionId: string): Promise<void> {
+    await selectSession(projectPath, sessionId)
+  }
+
+  async function newSession(projectPath?: string): Promise<void> {
+    await selectSession(projectPath)
   }
 
   async function send(): Promise<void> {
+    if (switchingRef.current) return
     const text = draft.trim()
     if (!text && images.length === 0) return
 
@@ -637,7 +696,8 @@ export default function App(): React.JSX.Element {
       const panel = PANEL_COMMANDS[text.toLowerCase()]
       if (panel) {
         setDraft('')
-        setTranscript((t) => [...t, stamp({ kind: panel })])
+        const item = stamp({ kind: panel })
+        setTranscript((t) => [...t, item])
         return
       }
     }
@@ -662,20 +722,15 @@ export default function App(): React.JSX.Element {
       const known = (sessionsByProject[ws] ?? []).some((s) => s.sessionId === activeSessionRef.current)
       if (!known) setPendingSession({ path: ws, title: text || '(图片)' })
     }
-    setTranscript((t) => [
-      ...t,
-      stamp({
-        kind: 'user',
-        text,
-        ts: Date.now(),
-        ...(sendImages.length > 0 ? { images: sendImages.length } : {}),
-      }),
-    ])
-    setError(null)
-    // 回答中发送不打断也不吞输入 —— 消息排队,当前轮答完接着处理。
-    // 计时与计数只在「从闲到忙」时清零(markBusy),排队不动当前轮的表
-    markBusy()
-    await window.api.chat.send(text, sendImages)
+    const viewId = viewIdRef.current
+    try {
+      await window.api.chat.send(text, sendImages, viewId)
+    } catch (err) {
+      if (viewId !== viewIdRef.current) return
+      setError(`发送失败:${err instanceof Error ? err.message : String(err)}`)
+      setDraft(text)
+      setImages(sendImages)
+    }
   }
 
   // §15:只在行首第一个字符是 / 时才弹
@@ -859,12 +914,7 @@ export default function App(): React.JSX.Element {
         versions={versions}
         expandedAll={expandedAll}
         onNewSession={() => void newSession()}
-        onNewSessionIn={async (path) => {
-          if (path !== config?.activeWorkspace) {
-            setConfig(await window.api.projects.activate(path))
-          }
-          await newSession()
-        }}
+        onNewSessionIn={(path) => void newSession(path)}
         onOpenSession={(p, id) => void openSession(p, id)}
         onSessionMenu={(session, at) => setMenu({ session, at })}
         onToggleCollapse={async (path, collapsed) => {
@@ -1151,7 +1201,7 @@ export default function App(): React.JSX.Element {
         </div>
 
         {/* §05:输入框与控件条是同一张卡,控件在卡内底部 */}
-        <div className="composer-wrap">
+        <div className="composer-wrap" inert={switching} aria-busy={switching}>
           {paletteOpen && (
             <CommandPalette
               commands={commands}
@@ -1260,9 +1310,20 @@ export default function App(): React.JSX.Element {
               contextWarnAt={CONTEXT_WARN_AT}
               requestOpen={controlRequest}
               onRequestHandled={() => setControlRequest(null)}
-              onMode={(v) => {
-                void window.api.chat.setPermissionMode(v)
-                setConfig((c) => (c ? { ...c, permissionMode: v } : c))
+              onMode={async (v) => {
+                if (permissionChanging.current) return
+                permissionChanging.current = true
+                const viewId = viewIdRef.current
+                try {
+                  await window.api.chat.setPermissionMode(v)
+                  if (viewId !== viewIdRef.current) return
+                  setConfig((c) => (c ? { ...c, permissionMode: v } : c))
+                } catch (err) {
+                  if (viewId !== viewIdRef.current) return
+                  setError(`权限切换失败:${err instanceof Error ? err.message : String(err)}`)
+                } finally {
+                  permissionChanging.current = false
+                }
               }}
               onModel={(v) => {
                 void window.api.chat.setModel(v)
