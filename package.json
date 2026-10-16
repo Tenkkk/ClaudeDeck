@@ -25,7 +25,7 @@
     "demo": "electron-vite build && node scripts/demo.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.220",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.283",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
