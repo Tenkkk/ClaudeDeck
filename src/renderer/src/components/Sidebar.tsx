@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AppearanceIcon, CaretIcon, CheckIcon, FolderIcon, PlusIcon } from './Icons.js'
+import { AppearanceIcon, CaretIcon, CheckIcon, FolderIcon, PencilIcon, PlusIcon } from './Icons.js'
 import Popover from './Popover.js'
 import { relativeTime } from '../lib/path.js'
 import {
@@ -29,14 +29,13 @@ export default function Sidebar({
   account,
   versions,
   expandedAll,
-  onNewSession,
   onNewSessionIn,
   onOpenSession,
   onSessionMenu,
+  onProjectMenu,
   onToggleCollapse,
   onExpandAll,
   onAddProject,
-  onManageProjects,
   theme,
   onTheme,
   filesProject,
@@ -50,14 +49,13 @@ export default function Sidebar({
   account: AccountInfo | null
   versions: Versions | null
   expandedAll: Record<string, boolean>
-  onNewSession: () => void
   onNewSessionIn: (projectPath: string) => void
   onOpenSession: (projectPath: string, sessionId: string) => void
   onSessionMenu: (session: SessionListItem, at: { x: number; y: number }) => void
+  onProjectMenu: (project: Project, at: { x: number; y: number }, trigger: HTMLButtonElement) => void
   onToggleCollapse: (path: string, collapsed: boolean) => void
   onExpandAll: (path: string) => void
   onAddProject: () => void
-  onManageProjects: () => void
   theme: ThemePref
   onTheme: (t: ThemePref) => void
   /** 中栏正在浏览哪个项目的文件,没有就是 null */
@@ -67,32 +65,17 @@ export default function Sidebar({
   const [themeOpen, setThemeOpen] = useState(false)
   return (
     <aside className="sidebar">
-      {/* 侧栏的品牌位不带圆点 —— 那颗呼吸点是加载态与空态的元件(§02),
-          不是常驻装饰。陶土只出现在三处:当前项、主按钮、等你决定的卡片。 */}
-      {/*
-        新建会话移到品牌行右端 —— 搜索挪去了标题栏,这个位置正好留给
-        侧栏里最常用的动作。原先那一整行连同 Ctrl N 标注一并去掉:
-        快捷键提示是给键盘用户的,而这里的形态是给鼠标看的。
-      */}
+      {/* 品牌位不带呼吸点或重复的新建入口;新建会话属于各项目行。 */}
       <div className="sidebar-brand">
         <span className="brand">ClaudeDeck</span>
-        {/* 光一个 ＋ 不说明自己是什么,尤其当前已经在空会话上、点了没有可见变化时。
-            带上字就没有这个问题。 */}
-        <button className="new-session" title="新建会话" onClick={onNewSession}>
-          新建会话
-          <PlusIcon size={12} />
-        </button>
       </div>
 
       <div className="sidebar-scroll">
         <div className="group-head">
           <span>项目 · {projects.length}</span>
           <span className="spacer" />
-          <button className="ghost" title="管理项目" onClick={onManageProjects}>
-            ···
-          </button>
-          <button className="ghost" title="添加项目" onClick={onAddProject}>
-            ＋
+          <button className="ghost icon-btn sidebar-action project-create-action" aria-label="添加项目" title="添加项目" onClick={onAddProject}>
+            <PlusIcon size={18} />
           </button>
         </div>
 
@@ -115,7 +98,18 @@ export default function Sidebar({
                   className="project-row"
                   aria-expanded={open}
                   aria-current={project.path === activeWorkspace}
+                  aria-haspopup="menu"
                   title={project.path}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    onProjectMenu(project, { x: e.clientX, y: e.clientY }, e.currentTarget)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return
+                    e.preventDefault()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    onProjectMenu(project, { x: rect.left, y: rect.bottom }, e.currentTarget)
+                  }}
                   onClick={() => onToggleCollapse(project.path, open)}
                 >
                   <span className="caret">
@@ -126,35 +120,26 @@ export default function Sidebar({
                   <span className="count">{sessions.length}</span>
                 </button>
                 <button
-                  className="ghost icon-btn project-add"
+                  className="ghost icon-btn sidebar-action project-files"
+                  aria-label={`浏览 ${project.name} 的文件`}
+                  aria-pressed={filesProject === project.path}
+                  title={`浏览 ${project.name} 的文件`}
+                  onClick={() => onOpenFiles(project.path)}
+                >
+                  <FolderIcon size={18} />
+                </button>
+                <button
+                  className="ghost icon-btn sidebar-action project-add"
+                  aria-label={`在 ${project.name} 里新建会话`}
                   title={`在 ${project.name} 里新建会话`}
                   onClick={() => onNewSessionIn(project.path)}
                 >
-                  <PlusIcon />
+                  <PencilIcon />
                 </button>
               </div>
 
               {open && (
                 <>
-                  {/*
-                    文件入口挂在项目名和会话之间。
-                    原先这里是个只认 `.claude` 的节点,而且只有当前聚焦的项目才有 ——
-                    「为什么别的项目看不到配置」正是这么来的。现在每个项目都有,
-                    `.claude` 只是树里的一个普通文件夹。
-                  */}
-                  <button
-                    className="claude-node"
-                    aria-current={filesProject === project.path}
-                    onClick={() => onOpenFiles(project.path)}
-                    title={`浏览 ${project.name} 的文件`}
-                  >
-                    <span className="caret">
-                      <CaretIcon />
-                    </span>
-                    <FolderIcon className="folder" />
-                    <span className="label">文件</span>
-                  </button>
-
                   {sessions.length === 0 && (
                     <div className="hint session-empty">这个项目下还没有会话。</div>
                   )}

@@ -151,13 +151,29 @@ export function readApiKey(): string | null {
 
 /** Adds a project (idempotent by path) and makes it active. */
 /** 新增的项目会成为当前项目,所以它展开、其余保持原状。 */
-export function addProject(path: string): AppConfig {
+export function addProject(path: string, name = projectName(path)): AppConfig {
   const c = load()
   const existing = c.projects.find((p) => p.path === path)
   const projects = existing
     ? c.projects.map((p) => (p.path === path ? { ...p, collapsed: false } : p))
-    : [...c.projects, { path, name: projectName(path), collapsed: false }]
+    : [...c.projects, { path, name, collapsed: false }]
   persist({ ...c, projects, activeWorkspace: path })
+  return getConfig()
+}
+
+/** 只改显示名称,目录仍是会话归属与权限边界。 */
+export function renameProject(path: string, name: string): AppConfig {
+  const c = load()
+  if (typeof path !== 'string' || !c.projects.some((p) => p.path === path)) {
+    throw new Error('项目不存在或已被移除。')
+  }
+  if (typeof name !== 'string' || !name.trim()) {
+    throw new Error('项目名称不能为空。')
+  }
+  persist({
+    ...c,
+    projects: c.projects.map((p) => (p.path === path ? { ...p, name: name.trim() } : p)),
+  })
   return getConfig()
 }
 
@@ -184,7 +200,7 @@ export function setActiveWorkspace(path: string): AppConfig {
   const c = load()
   // 只认已登记的项目。这里若顺手 addProject,渲染层就能把任意目录注册成
   // 项目,IPC 层按 projects 对表的校验就全部形同虚设。新项目只从
-  // projects:add 的系统目录选择框进来。
+  // 系统目录选择框进来,创建表单还需核对选择凭证。
   if (!c.projects.some((p) => p.path === path)) return getConfig()
   persist({ ...c, activeWorkspace: path })
   return getConfig()

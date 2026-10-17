@@ -56,6 +56,7 @@ export async function listSessions({ dir }) {
 }
 export async function getSessionMessages(id) {
   if (fixtures.delays[id]) await fixtures.delays[id]
+  if (fixtures.history?.[id]) return fixtures.history[id]
   return [{ uuid: `history-${id}`, message: { role: 'assistant', content: `历史${id}` } }]
 }
 export async function deleteSession() {}

@@ -138,6 +138,26 @@ export function PlusIcon({ size = 12, className }: Props): React.JSX.Element {
   )
 }
 
+/** 新建会话:铅笔,与项目添加加号区分。 */
+export function PencilIcon({ size = 18, className }: Props): React.JSX.Element {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m10 2 4 4M2 14l1-4L11 2a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2l-8 8-4 1Z" />
+    </svg>
+  )
+}
+
 /** 勾选框里的勾。 */
 export function CheckIcon({ size = 10, className }: Props): React.JSX.Element {
   return (

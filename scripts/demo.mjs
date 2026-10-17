@@ -348,7 +348,7 @@ await step('切模型:努力程度可拖拽', async () => {
 // ════════════════════════════════════════════════════════════════
 await step('切会话:新建', async () => {
   await cap('新建一个会话 —— 一发消息侧栏立刻就有,标题由 Claude 自己定')
-  await tap('.sidebar-brand .new-session')
+  await tap('.project-row[aria-current="true"] ~ .project-add')
   await beat(T.beat)
   await typeInto('.composer textarea', '用一句话说明 Electron 是什么。')
   await send()

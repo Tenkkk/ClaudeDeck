@@ -173,6 +173,13 @@ export type FileRead =
   | { ok: true; text: string; editable: boolean }
   | { ok: false; reason: 'not-found' | 'out-of-scope' | 'too-large' | 'binary'; size?: number }
 
+export type MarkdownImageRead =
+  | { ok: true; src: string; path?: string }
+  | { ok: false; reason: 'not-found' | 'out-of-scope' | 'too-large' | 'unsupported' | 'unavailable' }
+
+export type ImageAction = 'copy' | 'reveal' | 'save'
+export type ImageActionResult = { ok: true; canceled?: boolean } | { ok: false; error: string }
+
 /** 当前登录的账号。原生 `/status` 里的那几行 */
 export interface AccountInfo {
   email?: string
@@ -434,7 +441,7 @@ export type ToolRow = ToolRowBase & { done?: boolean; failed?: boolean }
  * the transcript stays quiet until you reach for something.
  */
 type TranscriptEntry =
-  | { kind: 'user'; text: string; ts?: number; id?: string; images?: number }
+  | { kind: 'user'; text: string; ts?: number; id?: string; images?: number; attachments?: AttachmentSummary[] }
   | { kind: 'assistant'; text: string; ts?: number; id?: string }
   | { kind: 'tool'; row: ToolRow }
   /** Claude 回答之前的思考。默认折叠 —— 想看的时候才看 */
@@ -465,7 +472,7 @@ export type TurnStatus = 'compacting' | 'requesting' | 'retrying' | 'limited' | 
 export type ChatEvent =
   | { type: 'session'; sessionId: string }
   /** 已交给当前会话的用户消息,也用于切回后的内存回放。 */
-  | { type: 'sent'; text: string; images: number }
+  | { type: 'sent'; text: string; images: number; attachments?: AttachmentSummary[] }
   | { type: 'delta'; text: string }
   /**
    * 思考流。要 options.thinking = {type:'adaptive', display:'summarized'} 才有 ——
@@ -506,6 +513,8 @@ export type ChatEvent =
   | { type: 'tasks'; tasks: BackgroundTask[] }
   /** 收到不会画的 dialogKind,已回 cancelled · §06 兜底 */
   | { type: 'unknownDialog'; notice: UnknownDialogNotice }
+  /** 渠道图片兼容提示,仅为说明,不结束本轮。 */
+  | { type: 'compatibility'; message: string }
   /**
    * SDK 自己报的「此刻在干什么」。文案不由我编:requesting 就是在等模型,
    * compacting 就是在压上下文,null 表示这一段忙完了。
@@ -562,6 +571,31 @@ export type ChatViewEvent =
 export interface ImageAttachment {
   mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
   data: string
+}
+
+export interface AttachmentSummary {
+  id: string
+  name: string
+  size: number
+  kind: 'image' | 'text' | 'document' | 'pdf'
+  pasted?: boolean
+}
+
+export interface ChatAttachment extends AttachmentSummary {
+  /** 仅供当前草稿缩略图展示,不写入历史元数据 */
+  thumbnail?: string
+}
+
+export interface AttachmentResult {
+  name: string
+  attachment?: ChatAttachment
+  error?: string
+}
+
+export interface AttachmentPreview {
+  text?: string
+  image?: string
+  note?: string
 }
 
 /**

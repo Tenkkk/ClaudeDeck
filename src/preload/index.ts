@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppConfig,
+  AttachmentPreview,
+  AttachmentResult,
+  ChatAttachment,
   AskAnswer,
   ChatViewEvent,
   ClaudeEntry,
@@ -13,6 +16,9 @@ import type {
   EffortLevel,
   FileEntry,
   FileRead,
+  MarkdownImageRead,
+  ImageAction,
+  ImageActionResult,
   ImageAttachment,
   InitInfo,
   ModelOption,
@@ -49,7 +55,15 @@ const api = {
   },
   projects: {
     add: (): Promise<AppConfig> => ipcRenderer.invoke('projects:add'),
+    selectDirectory: (): Promise<{ token: string; path: string } | null> =>
+      ipcRenderer.invoke('projects:selectDirectory'),
+    discardSelection: (token: string): Promise<void> =>
+      ipcRenderer.invoke('projects:discardSelection', token),
+    create: (token: string, name: string): Promise<AppConfig> =>
+      ipcRenderer.invoke('projects:create', token, name),
     activate: (path: string): Promise<AppConfig> => ipcRenderer.invoke('projects:activate', path),
+    rename: (path: string, name: string): Promise<AppConfig> =>
+      ipcRenderer.invoke('projects:rename', path, name),
     remove: (path: string): Promise<AppConfig> => ipcRenderer.invoke('projects:remove', path),
     collapse: (path: string, collapsed: boolean): Promise<AppConfig> =>
       ipcRenderer.invoke('projects:collapse', path, collapsed),
@@ -83,6 +97,17 @@ const api = {
       ipcRenderer.invoke('files:list', projectPath, relDir),
     read: (projectPath: string, relPath: string): Promise<FileRead> =>
       ipcRenderer.invoke('files:read', projectPath, relPath),
+    image: (projectPath: string, source: string): Promise<MarkdownImageRead> =>
+      ipcRenderer.invoke('files:image', projectPath, source),
+    imageAttach: (project: string, source: string): Promise<ChatAttachment> => ipcRenderer.invoke('files:imageAttach', project, source),
+    imageAction: (project: string, source: string, action: ImageAction): Promise<ImageActionResult> => ipcRenderer.invoke('files:imageAction', project, source, action),
+  },
+  attachments: {
+    choose: (project: string): Promise<AttachmentResult[]> => ipcRenderer.invoke('attachments:choose', project),
+    add: (project: string, name: string, bytes: Uint8Array, pasted = false): Promise<ChatAttachment> =>
+      ipcRenderer.invoke('attachments:add', project, name, bytes, pasted),
+    preview: (project: string, id: string): Promise<AttachmentPreview> => ipcRenderer.invoke('attachments:preview', project, id),
+    remove: (project: string, id: string): Promise<void> => ipcRenderer.invoke('attachments:remove', project, id),
   },
   claude: {
     list: (): Promise<ClaudeEntry[]> => ipcRenderer.invoke('claude:list'),
@@ -124,8 +149,8 @@ const api = {
       chatViewId = viewId
       return ipcRenderer.invoke('chat:open', sessionId, viewId, workspace)
     },
-    send: (text: string, images?: ImageAttachment[], viewId?: string): Promise<boolean> =>
-      invokeChat('chat:send', text, images, viewId),
+    send: (text: string, images?: ImageAttachment[], viewId?: string, attachmentIds?: string[]): Promise<boolean> =>
+      invokeChat('chat:send', text, images, viewId, attachmentIds),
     /** 首屏三次控制往返合一;null 时退回逐项拉取 */
     init: (): Promise<InitInfo | null> => invokeChat('chat:init'),
     models: (): Promise<ModelOption[]> => invokeChat('chat:models'),

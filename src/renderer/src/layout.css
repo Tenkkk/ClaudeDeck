@@ -230,6 +230,90 @@ kbd,
   gap: var(--s8);
 }
 
+.project-picker-host {
+  flex: 1;
+  min-height: 0;
+}
+
+.project-create {
+  padding: var(--s20);
+}
+
+.project-create .card {
+  max-width: 640px;
+  max-height: calc(100vh - 2 * var(--s20));
+  overflow-y: auto;
+  box-shadow: var(--shadow-popover);
+}
+
+.project-create-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s16);
+}
+
+.project-create button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.project-create-name {
+  display: flex;
+  align-items: center;
+  gap: var(--s12);
+  padding: 0 var(--s16);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+
+.project-create-name:focus-within {
+  border-color: var(--accent);
+}
+
+.project-create-name input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.project-create-source {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s16);
+  min-height: 128px;
+  padding: var(--s20);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+
+.project-create-source button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s6);
+  background: var(--bg);
+  border-radius: var(--r-pill);
+}
+
+.project-create-path {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-size: var(--text-ui-s);
+}
+
+.project-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s16);
+  margin-top: var(--s16);
+}
+
 .step-label {
   display: flex;
   align-items: baseline;
@@ -387,7 +471,7 @@ kbd,
   padding-left: var(--s8);
   /* 不画分隔线,整条统一取侧栏的底色 —— 分两段的话中间会有一道竖着的
      色阶,比一条横线更碍眼。两套主题都走同一个变量。 */
-  background: var(--surface);
+  background: var(--sidebar);
   /* 整条可拖,按钮各自 no-drag —— 不标的话按钮会被拖拽区吃掉点击 */
   -webkit-app-region: drag;
 }
@@ -484,7 +568,7 @@ kbd,
 }
 
 .resizer-midcol {
-  left: calc(var(--w-sidebar) + var(--w-midcol));
+  left: calc(100% - var(--w-midcol));
 }
 
 /* 悬停和拖动时才把线点亮 —— 平时它就该是一道安静的边框 */
@@ -504,9 +588,9 @@ kbd,
   outline: none;
 }
 
-/* §10:中栏打开时 264 + 320 + 剩下的 */
+/* 文件放在对话右侧,右侧宽度随可用空间收缩 */
 .shell.with-mid {
-  grid-template-columns: var(--w-sidebar) var(--w-midcol) 1fr;
+  grid-template-columns: var(--w-sidebar) minmax(0, 1fr) var(--w-midcol);
 }
 
 /* 侧栏收起:那一列整个去掉,不是宽度归零 —— 归零的话里面的内容还在,
@@ -516,7 +600,11 @@ kbd,
 }
 
 .shell.no-sidebar.with-mid {
-  grid-template-columns: var(--w-midcol) 1fr;
+  grid-template-columns: minmax(0, 1fr) var(--w-midcol);
+}
+
+.shell.no-sidebar {
+  --w-sidebar: 0px;
 }
 
 /* ---- .claude 配置栏 · §10 ---- */
@@ -579,7 +667,7 @@ kbd,
   min-width: 0;
   position: relative;
   background: var(--raised);
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 .midcol-head {
@@ -646,7 +734,7 @@ kbd,
 
 .midcol-body {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -665,6 +753,7 @@ kbd,
 }
 
 .midcol-text {
+  min-width: 0;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -681,6 +770,74 @@ kbd,
 .midcol-text:focus {
   outline: none;
   border: none;
+}
+
+.file-content {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.file-content:has(.midcol-error) {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.file-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  padding: var(--s8) var(--s16);
+  border-bottom: 1px solid var(--border);
+}
+
+.file-view-switch {
+  display: flex;
+  gap: var(--s4);
+}
+
+.file-toolbar button {
+  padding: var(--s4) var(--s8);
+  font-size: var(--text-ui-s);
+}
+
+.file-view-switch button[aria-pressed='true'] {
+  background: var(--bubble);
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.file-expand {
+  margin-left: auto;
+}
+
+.file-preview {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--s26) var(--s20);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-m);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.file-preview > .md {
+  max-width: var(--w-prose);
+  margin: 0 auto;
+}
+
+.midcol.expanded {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--w-sidebar);
+  right: 0;
+  width: auto;
+  z-index: 25;
+}
+
+.shell:has(.midcol.expanded) > .main,
+.shell:has(.midcol.expanded) > .resizer-midcol {
+  visibility: hidden;
 }
 
 /* 关掉或切走时才拦这一次 */
@@ -709,21 +866,29 @@ kbd,
   justify-content: flex-end;
 }
 
-/* §09:940 时中栏改成盖在对话区上的浮层 ——
-   264 + 320 之后只剩 356px,气泡就没法读了 */
+/* 窄窗口文件区靠右浮在对话上,不挤压对话列 */
 @media (max-width: 1040px) {
-  .shell.with-mid {
-    grid-template-columns: var(--w-sidebar) 1fr;
+  .shell.with-mid,
+  .shell.no-sidebar.with-mid {
+    grid-template-columns: var(--w-sidebar) minmax(0, 1fr);
+  }
+
+  .shell.no-sidebar.with-mid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .midcol {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: var(--w-sidebar);
+    right: 0;
     width: var(--w-midcol);
     z-index: 25;
     box-shadow: var(--shadow-popover);
+  }
+
+  .resizer-midcol {
+    z-index: 26;
   }
 }
 
@@ -738,7 +903,7 @@ kbd,
    */
   grid-template-rows: auto 1fr auto;
   min-height: 0;
-  background: var(--surface);
+  background: var(--sidebar);
   border-right: 1px solid var(--border);
 }
 
@@ -749,53 +914,8 @@ kbd,
   justify-content: space-between;
 }
 
-/* 品牌行右端的新建会话:一行安静的小字,不是主按钮 ——
-   陶土只出现在当前项、主按钮、等待决定的卡片 */
-.new-session {
-  display: flex;
-  align-items: center;
-  gap: var(--s4);
-  flex: none;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: var(--r-control);
-  padding: var(--s2) var(--s6);
-  font-size: var(--text-ui-s);
-  color: var(--muted);
-}
-
-.new-session:hover {
-  background: var(--bg);
-  border-color: var(--border);
-  color: var(--ink-2);
-}
-
-/* 一行安静的入口,不是主按钮 */
-.new-session {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--s8);
-  border: none;
-  background: transparent;
-  border-radius: var(--r-control);
-  padding: var(--s8) var(--s12);
-  color: var(--ink);
-}
-
-.new-session:hover {
-  background: var(--bg);
-}
-
-.new-session .label {
-  flex: 1;
-  text-align: left;
-}
-
-.new-session kbd {
-  font-family: var(--font-mono);
-  font-size: var(--text-mono-s);
-  color: var(--muted-2);
+.sidebar-brand .brand {
+  font-weight: 600;
 }
 
 .sidebar-scroll {
@@ -810,10 +930,9 @@ kbd,
   gap: var(--s8);
   padding: var(--s6) var(--s8);
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-mono-s);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-s);
+  font-weight: 500;
 }
 
 .group-head .spacer {
@@ -833,7 +952,7 @@ kbd,
 }
 
 .project-row:hover {
-  background: var(--bg);
+  background: var(--hover);
 }
 
 /* 折叠箭头是内联 SVG(不用 ▸ ▾ 字符,打包字体里没有那些字形)。
@@ -859,7 +978,7 @@ kbd,
   color: var(--accent);
 }
 
-/* 项目行右侧的「在这个项目里新建会话」,悬停才出现 */
+/* 文件与新建会话是项目级动作,不占用会话列表 */
 .project-line {
   display: flex;
   align-items: center;
@@ -870,17 +989,64 @@ kbd,
   min-width: 0;
 }
 
-/* 常显。终稿里它是侧栏上除「当前项」之外唯一带陶土的元件。
-   选择器要比 .icon-btn 更具体 —— 后者定义在下面,否则会把颜色盖回中性色。 */
-.project-line .project-add {
+.sidebar .sidebar-action {
   flex: none;
-  margin-right: var(--s8);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.sidebar .sidebar-action:hover {
+  color: var(--ink-2);
+  background: var(--hover);
+}
+
+.group-head:hover .project-create-action,
+.group-head:focus-within .project-create-action,
+.project-line:hover .project-add,
+.project-line:focus-within .project-add,
+.project-line:hover .project-files,
+.project-line:focus-within .project-files,
+.project-line .project-files[aria-pressed='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-line .project-files[aria-pressed='true'] {
   color: var(--accent);
   background: var(--accent-tint);
 }
 
-.project-line .project-add:hover {
-  background: var(--bubble-hover);
+.sidebar .sidebar-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar .sidebar-action {
+    transition: none;
+  }
+}
+
+@media (hover: none) {
+  .sidebar .sidebar-action {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.project-line .project-files {
+  margin-right: var(--s4);
+}
+
+/* 与分组头的右侧内边距一致,加号与铅笔对齐。 */
+.project-line .project-add {
+  margin-right: var(--s8);
 }
 
 .icon-btn {
@@ -906,31 +1072,7 @@ kbd,
   color: var(--muted-2);
 }
 
-/* .claude 节点挂在项目名和会话之间 · §10 */
-.claude-node {
-  display: flex;
-  align-items: center;
-  gap: var(--s8);
-  width: 100%;
-  text-align: left;
-  border-color: transparent;
-  background: transparent;
-  padding: var(--s6) var(--s8);
-  margin-left: var(--s16);
-  width: calc(100% - var(--s16));
-  border-radius: var(--r-control);
-  color: var(--ink-2);
-}
-
-.claude-node:hover {
-  background: var(--bg);
-}
-
-.claude-node .mono {
-  flex: 1;
-}
-
-/* §05:当前会话是 8px 圆角块 + 2px 陶土内条,其他会话不画容器 */
+/* §05:当前会话使用中性圆角块,其他会话不画容器 */
 .session-row {
   display: grid;
   gap: 2px;
@@ -940,18 +1082,16 @@ kbd,
   border: 1px solid transparent;
   background: transparent;
   border-radius: var(--r-popover);
-  padding: var(--s8) var(--s12);
+  padding: var(--s6) var(--s12);
 }
 
 .session-row:hover {
-  background: var(--bg);
+  background: var(--hover);
 }
 
-/* 当前会话:8px 圆角块 + 2px 陶土内条 + 一圈可见描边(§05) */
+/* 中性选中底与浅一档悬停区分,不与正文或安全确认争夺强调色。 */
 .session-row[aria-current='true'] {
-  background: var(--accent-tint);
-  border-color: var(--focus);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--selection);
 }
 
 .session-row[aria-current='true'] .title {
@@ -965,7 +1105,7 @@ kbd,
 }
 
 .session-row .meta {
-  font-size: var(--text-ui-s);
+  font-size: var(--text-mono-m);
   color: var(--muted);
 }
 
@@ -986,7 +1126,7 @@ kbd,
 }
 
 .expand-all:hover {
-  background: var(--bg);
+  background: var(--hover);
 }
 
 /* ---- 侧栏底部两行 · §05 ---- */
@@ -1082,6 +1222,7 @@ kbd,
 /* ---- 主区 ---- */
 
 .main {
+  --conversation-padding: var(--s20);
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 0;
@@ -1094,7 +1235,6 @@ kbd,
   align-items: center;
   gap: var(--s8);
   padding: var(--s12) var(--s20);
-  border-bottom: 1px solid var(--border);
   min-width: 0;
 }
 
@@ -1105,8 +1245,8 @@ kbd,
 
 .crumb .project {
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-mono-l);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-s);
   flex: none;
 }
 
@@ -1220,87 +1360,355 @@ kbd,
   color: var(--muted-2);
 }
 
-/* ---- 设置 ---- */
+/* ---- 设置:分类栏 + 独立滚动内容 + 固定操作底栏 ---- */
 
-.dialog {
-  width: min(520px, 92vw);
-  max-height: 82vh;
+.settings-dialog {
+  width: min(780px, calc(100vw - 48px));
+  height: min(620px, calc(100vh - 48px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  margin: auto;
+  color: var(--ink);
+  border-radius: var(--r-bubble);
+  overflow: hidden;
 }
 
-.dialog-head {
+.settings-dialog:not([open]) {
+  display: none;
+}
+
+.settings-dialog::backdrop {
+  background: rgba(35, 32, 25, 0.28);
+}
+
+.settings-dialog .dialog-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--s12) var(--s12) var(--s12) var(--s16);
+  flex: none;
+  gap: var(--s16);
+  padding: var(--s20) var(--s26);
   border-bottom: 1px solid var(--border);
 }
 
-.dialog-body {
-  overflow: auto;
-  padding: var(--s8) 0 var(--s16);
-  min-height: 0;
+.settings-dialog h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
 }
 
-.set-row {
-  display: flex;
-  gap: var(--s12);
-  padding: var(--s4) var(--s16);
-  font-size: var(--fs-sm);
-}
-
-.set-label {
-  flex: none;
-  width: 88px;
+.settings-dialog .dialog-head p {
+  margin: var(--s4) 0 0;
   color: var(--muted);
+  font-size: var(--text-ui-s);
 }
 
-.set-value {
+.settings-dialog .dialog-head .icon-btn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
   flex: 1;
+  min-height: 0;
   min-width: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s16) var(--s12);
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+}
+
+.settings-nav button {
+  text-align: left;
+  min-height: 40px;
+  border-color: transparent;
+  background: transparent;
+  padding: var(--s8) var(--s12);
   color: var(--ink-2);
 }
 
-/* 路径可能很长,让它换行而不是把对话框撑宽 */
-.set-path {
-  word-break: break-all;
+.settings-nav button:hover {
+  background: var(--hover);
 }
 
-.set-ok {
-  color: var(--live);
+.settings-nav button[aria-current='page'] {
+  background: var(--selection);
+  color: var(--ink);
+  font-weight: 600;
 }
 
-.set-bad {
-  color: var(--warn);
+.settings-nav-note {
+  margin-top: auto;
+  padding: var(--s12);
+  font-family: var(--font-brand);
+  font-size: 15px;
+  color: var(--muted);
 }
 
-.set-note {
-  padding: var(--s4) var(--s16) var(--s8);
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-dialog .dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--s26);
+  min-height: 0;
+  min-width: 0;
+  scrollbar-gutter: stable;
+}
+
+.settings-section-head {
+  margin-bottom: var(--s26);
+}
+
+.settings-section-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.settings-section-head p {
+  margin: var(--s8) 0 0;
   font-size: var(--text-ui-s);
-  color: var(--muted-2);
+  color: var(--muted);
   line-height: 1.6;
 }
 
-.set-field {
-  display: flex;
-  align-items: center;
-  gap: var(--s12);
-  padding: var(--s4) var(--s16);
+.settings-dialog .set-field {
+  display: grid;
+  gap: var(--s8);
+  margin-bottom: var(--s20);
 }
 
-.set-field input {
-  flex: 1;
+.settings-dialog .set-field .set-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s8);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.settings-dialog .set-label small,
+.settings-dialog .set-field-hint,
+.settings-dialog .set-note {
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-dialog .set-field input {
+  width: 100%;
   min-width: 0;
+  min-height: 40px;
   border: 1px solid var(--border);
   border-radius: var(--r-control);
-  background: var(--bg);
-  padding: var(--s6) var(--s8);
+  background: var(--raised);
+  padding: var(--s8) var(--s12);
   font-size: var(--text-ui-m);
   color: var(--ink);
 }
 
-.set-actions {
-  padding: var(--s8) var(--s16) 0;
+.settings-details {
+  border-top: 1px solid var(--border);
+  padding-top: var(--s16);
+  margin-top: var(--s20);
+  color: var(--muted);
+  font-size: var(--text-ui-s);
+  line-height: 1.7;
+}
+
+.settings-details summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+.settings-details p {
+  margin: var(--s12) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-card {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-popover);
+  padding: var(--s16);
+}
+
+.settings-runtime-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s12);
   align-items: center;
+  margin-bottom: var(--s12);
+}
+
+.settings-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-ui-s);
+}
+
+.settings-status {
+  font-size: var(--text-ui-s);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s6);
+}
+
+.settings-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: currentColor;
+}
+
+.settings-dialog .set-row {
+  display: flex;
+  gap: var(--s16);
+  margin-top: var(--s8);
+  font-size: var(--text-ui-s);
+  line-height: 1.6;
+}
+
+.settings-dialog .set-row .set-label {
+  width: 64px;
+  flex: none;
+  color: var(--muted);
+}
+
+.settings-dialog .set-value {
+  min-width: 0;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.settings-dialog .set-ok {
+  color: var(--live);
+}
+
+.settings-dialog .set-bad {
+  color: var(--warn);
+}
+
+.settings-version {
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.settings-update {
+  margin-top: var(--s26);
+}
+
+.settings-update h3 {
+  font-size: var(--text-ui-m);
+  margin: 0 0 var(--s8);
+  font-weight: 600;
+}
+
+.settings-update .update-actions {
+  margin-top: var(--s16);
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s12);
+  flex-wrap: wrap;
+  flex: none;
+  min-height: 80px;
+  padding: var(--s16) var(--s26);
+  border-top: 1px solid var(--border);
+}
+
+.settings-save-status,
+.settings-footer-note {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+}
+
+.settings-footer button,
+.settings-update button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.settings-dialog :is(button, input, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .settings-dialog {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+  }
+
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    padding: var(--s8);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-nav button {
+    flex: 1;
+    min-width: 0;
+    padding: var(--s8) var(--s4);
+    text-align: center;
+    font-size: var(--text-ui-s);
+  }
+
+  .settings-nav-note {
+    display: none;
+  }
+
+  .settings-dialog .dialog-head,
+  .settings-dialog .dialog-body,
+  .settings-footer {
+    padding: var(--s16);
+  }
+
+  .settings-save-status {
+    flex-basis: 100%;
+  }
+
+  .settings-footer-actions {
+    margin-left: auto;
+  }
 }
 
 /* 归属行右端的文件入口 */
@@ -1544,19 +1952,53 @@ kbd,
 /* ---- 对话区 ---- */
 
 .transcript {
+  grid-area: 2 / 1;
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   min-height: 0;
-  padding: var(--s26) var(--s20);
+  min-width: 0;
+  padding: var(--s26) var(--conversation-padding);
   display: grid;
+  grid-template-columns: minmax(0, min(100%, var(--w-prose)));
   gap: var(--s20);
   align-content: start;
+  justify-content: center;
   justify-items: start;
+}
+
+.transcript::-webkit-scrollbar {
+  width: var(--s8);
+}
+
+.transcript::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--r-pill);
+}
+
+.transcript > * {
+  min-width: 0;
+}
+
+.scroll-latest {
+  grid-area: 2 / 1;
+  align-self: end;
+  justify-self: end;
+  z-index: 1;
+  margin: 0 var(--s26) var(--s16) 0;
+  padding: var(--s6) var(--s12);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--text-ui-s);
 }
 
 /* §06 用户 · 靠右 · 有气泡 · 最宽 560 */
 .msg-user {
   justify-self: end;
-  max-width: var(--w-bubble);
+  max-width: min(var(--w-bubble), 100%);
+  overflow-wrap: anywhere;
   background: var(--bubble);
   border-radius: var(--r-bubble);
   padding: var(--s12) var(--s16);
@@ -1592,7 +2034,10 @@ kbd,
 /* §06 Claude · 靠左 · 无气泡 · 最宽 720 · Source Serif 正文 */
 .msg-claude {
   justify-self: start;
-  max-width: var(--w-prose);
+  max-width: min(var(--w-prose), 100%);
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-prose);
   font-size: var(--text-prose);
   line-height: var(--leading-prose);
@@ -1617,6 +2062,218 @@ kbd,
   /* 段内的手动换行要留住 —— 模型常用它排版;段间空行已由块结构表达 */
   white-space: pre-wrap;
 }
+
+.md-image {
+  display: block;
+  max-width: 100%;
+  margin: var(--s12) 0;
+  white-space: normal;
+}
+
+.md-image-status {
+  display: block;
+  padding: var(--s12);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  background: var(--bg);
+  color: var(--ink-2);
+  font: 13px/1.5 var(--font-ui);
+  overflow-wrap: anywhere;
+}
+
+.md-image-load {
+  min-height: 44px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.md-image-load:hover { color: var(--ink); }
+
+.md-image-button {
+  display: block;
+  max-width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.md-image-button[hidden] { display: none; }
+
+.md-image-button img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.md-image-stage {
+  position: relative;
+  display: inline-flex;
+  max-width: calc(100% - 52px);
+  vertical-align: top;
+}
+
+.md-image-stage[hidden] { display: none; }
+.md-image-stage > .image-menu { position: absolute; left: calc(100% + 8px); top: 0; }
+.md-image-stage > .image-menu > .image-control { opacity: 0; transition: opacity 150ms; }
+.md-image-stage:hover > .image-menu > .image-control,
+.md-image-stage:focus-within > .image-menu > .image-control,
+.md-image-stage > .image-menu.active > .image-control { opacity: 1; }
+
+.image-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.image-control:hover { background: var(--bg); }
+.image-control:disabled { cursor: default; opacity: 0.5; }
+.image-menu { display: inline-flex; font-family: var(--font-ui); }
+.image-menu-panel {
+  position: fixed;
+  z-index: 40;
+  width: min(248px, calc(100vw - 16px));
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 12%);
+  white-space: normal;
+}
+
+.image-menu-panel button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: 13px/1.5 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.image-menu-panel button svg { flex-shrink: 0; }
+.image-menu-panel button:hover,
+.image-menu-panel button:focus-visible { background: var(--bg); }
+.image-menu-panel button:disabled { opacity: 0.5; cursor: default; }
+
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  overflow: hidden;
+  font-family: var(--font-ui);
+}
+
+.image-viewer[open] { display: flex; flex-direction: column; }
+.image-viewer::backdrop {
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.image-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  height: 64px;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+}
+
+.image-viewer-title { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; }
+.image-viewer-title svg { flex-shrink: 0; }
+.image-viewer-title > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.image-viewer-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.image-viewer-controls select {
+  max-width: 136px;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 13px var(--font-ui);
+  cursor: pointer;
+}
+
+.image-viewer-canvas {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 64px 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.image-viewer-canvas > img {
+  flex-shrink: 0;
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  object-fit: contain;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 10%);
+}
+
+.image-viewer-menu { position: fixed; }
+.image-action-note,
+.image-viewer-note {
+  position: fixed;
+  z-index: 50;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 10%);
+  font: 13px/1.5 var(--font-ui);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.image-action-note.error { color: var(--warn); }
+@media (hover: none) { .md-image-stage > .image-menu > .image-control { opacity: 1; } }
+@media (max-width: 640px) {
+  .image-viewer-toolbar { padding: 8px; gap: 8px; }
+  .image-viewer-controls { gap: 4px; }
+  .image-viewer-controls select { max-width: 120px; }
+  .image-viewer-canvas { padding-left: 24px; padding-right: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .md-image-stage > .image-menu > .image-control { transition: none; } }
 
 .md-h {
   margin: var(--s16) 0 var(--s8);
@@ -1765,12 +2422,14 @@ kbd,
   color: var(--muted);
 }
 
-.msg-wrap:hover .msg-slot {
+.msg-wrap:hover .msg-slot,
+.msg-wrap:focus-within .msg-slot {
   opacity: 1;
 }
 
 .msg-wrap {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s4);
   width: 100%;
 }
@@ -1801,10 +2460,70 @@ kbd,
 /* ---- 工具行 · §06 ----
  * 默认只有一行标题,视觉权重低于正文。有输出的给展开/收起。 */
 
+.tool-group {
+  width: 100%;
+  max-width: min(var(--w-prose), 100%);
+}
+
+.tool-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  width: 100%;
+  min-width: 0;
+  padding: var(--s6) 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+}
+
+.tool-group-head:hover {
+  background: transparent;
+  color: var(--ink-2);
+}
+
+.tool-group-head > svg,
+.tool-group-head > span:first-of-type {
+  flex: none;
+}
+
+.tool-group-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tool-group-current {
+  margin-left: var(--s20);
+  font-size: var(--text-ui-s);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.tool-group-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s12);
+  margin: var(--s8) 0 0 var(--s20);
+  padding-left: var(--s12);
+  border-left: 1px solid var(--border);
+}
+
+.tool-group-body .tool-arg {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool-group-body .tool-toggle {
+  flex: none;
+}
+
 .tool-block,
 .tool-row {
   justify-self: start;
-  max-width: var(--w-prose);
+  max-width: min(var(--w-prose), 100%);
   width: 100%;
 }
 
@@ -1881,13 +2600,13 @@ kbd,
   font-size: var(--text-mono-m);
   line-height: 1.6;
   color: var(--ink-2);
-  max-height: 260px;
-  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tool-cmd-line {
   display: block;
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 .tool-cmd-mark {
@@ -1904,10 +2623,13 @@ kbd,
   background: var(--bg);
   border-radius: var(--r-control);
   padding: var(--s8) var(--s12);
-  max-height: 260px;
-  overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   line-height: 1.6;
+}
+
+.tool-output-more {
+  margin: var(--s6) 0 0 22px;
 }
 
 /* ---- Edit 的 diff · §06 ----
@@ -1959,7 +2681,7 @@ kbd,
 /* 加删记号占左侧一个固定槽位,正文另起一列 —— 复制正文时不会带上记号 */
 .diff-line {
   display: grid;
-  grid-template-columns: 18px 1fr;
+  grid-template-columns: 18px minmax(0, 1fr);
   color: var(--ink-2);
 }
 
@@ -1971,6 +2693,7 @@ kbd,
 
 .diff-text {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding-right: var(--s12);
 }
 
@@ -2084,6 +2807,21 @@ kbd,
   display: grid;
   gap: var(--s12);
   justify-items: center;
+}
+
+.empty-state h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-prose);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: var(--text-ui-s);
+  line-height: 1.7;
 }
 
 .session-empty {
@@ -2300,7 +3038,7 @@ kbd,
  * 灰、窄、默认折叠 —— 它是过程不是结论,不该和回答抢注意力。 */
 
 .thought {
-  max-width: var(--w-prose);
+  max-width: min(var(--w-prose), 100%);
   margin: 0 0 var(--s8);
 }
 
@@ -2349,6 +3087,7 @@ kbd,
   line-height: 1.7;
   color: var(--muted);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ---- 等待态:忙着但还没开口的那段 ---- */
@@ -2377,6 +3116,7 @@ kbd,
    陶土左条 = 在拦你(计划卡是沙绿左条 = 在等你满意)。 */
 .permission-card {
   width: 100%;
+  min-width: 0;
   max-width: var(--w-prose);
   background: var(--raised);
   border: 1px solid var(--border);
@@ -2385,6 +3125,26 @@ kbd,
   padding: var(--s16);
   display: grid;
   gap: var(--s6);
+  overflow-wrap: anywhere;
+}
+
+.permission-card .row {
+  flex-wrap: wrap;
+}
+
+.permission-card .row > button:not(.card-remember) {
+  flex: none;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.permission-card .card-remember {
+  flex-basis: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin-left: 0;
+  text-align: left;
+  white-space: normal;
 }
 
 .card-label {
@@ -2523,19 +3283,24 @@ button.todo-box {
 
 .palette {
   position: absolute;
-  left: var(--s20);
-  right: var(--s20);
+  left: var(--conversation-padding);
+  right: var(--conversation-padding);
   bottom: calc(100% - var(--s12));
   z-index: 30;
   max-height: 320px;
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 1fr auto;
   padding: var(--s6) var(--s6) 0;
 }
 
 .palette-list {
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px;
   align-content: start;
 }
@@ -2551,6 +3316,7 @@ button.todo-box {
   align-items: baseline;
   gap: var(--s8);
   width: 100%;
+  min-width: 0;
   text-align: left;
   border: none;
   background: transparent;
@@ -2565,6 +3331,10 @@ button.todo-box {
 
 .palette-name {
   flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--text-mono-l);
   color: var(--ink);
@@ -2582,7 +3352,12 @@ button.todo-box {
 
 .palette-hint,
 .palette-alias {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 20%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--text-mono-s);
   color: var(--muted-2);
@@ -2695,6 +3470,29 @@ button.todo-box {
 .ctx-confirm .row {
   justify-content: flex-end;
   margin-top: var(--s4);
+}
+
+/* 项目右键菜单沿用会话弹层,补齐表单与键盘焦点 */
+.project-menu {
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+.project-menu strong,
+.project-menu-error {
+  overflow-wrap: anywhere;
+}
+
+.project-menu-error {
+  color: var(--warn);
+  font-size: var(--text-ui-s);
+}
+
+.project-menu :is(button, input):focus-visible,
+.project-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* 会话标签,跟在标题后面 */
@@ -2932,14 +3730,21 @@ button.todo-box {
 
 /* §05:输入框与控件条是同一张卡,控件在卡内底部 */
 .composer-wrap {
-  padding: var(--s12) var(--s20) var(--s16);
+  width: min(calc(100% - var(--s8)), calc(var(--w-prose) + 2 * var(--conversation-padding)));
+  min-width: 0;
+  justify-self: center;
+  margin-right: var(--s8);
+  padding: var(--s12) var(--conversation-padding) var(--s16);
 }
 
 .composer {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-bubble);
-  padding: var(--s12) var(--s12) var(--s8);
+  border-radius: var(--r-composer);
+  box-shadow: var(--shadow-composer);
+  padding: var(--s16) var(--s16) var(--s12);
   display: grid;
   gap: var(--s8);
 }
@@ -2964,6 +3769,111 @@ button.todo-box {
   outline: none;
   border: none;
 }
+
+/* 附件沿用输入卡的主题,不因长文件名引入横向滚动。 */
+.composer.file-dragging { border-color: var(--focus); }
+
+.attachment-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s8);
+  max-height: 180px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--s4);
+}
+
+.attachment-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  width: 220px;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-inline);
+  background: var(--raised);
+}
+
+.attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--s8);
+  min-width: 0;
+  padding: var(--s8);
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.attachment-preview > svg,
+.message-attachment > svg { flex-shrink: 0; }
+
+.attachment-preview > img {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-inline);
+  object-fit: cover;
+}
+
+.attachment-label { display: grid; min-width: 0; gap: 2px; }
+.attachment-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.attachment-detail,
+.attachment-hint { color: var(--ink-2); font-size: var(--text-ui-s); }
+.attachment-remove { padding: 0; width: 28px; height: 32px; background: transparent; border: 0; }
+
+.attachment-file-error {
+  grid-column: 1 / -1;
+  color: var(--warn);
+  font-size: var(--text-ui-s);
+  overflow-wrap: anywhere;
+  padding: 0 var(--s8) var(--s8);
+}
+
+.attachment-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.attachment-add > svg { flex-shrink: 0; }
+.attachment-preview:disabled { opacity: 1; }
+.attachment-card.failed { border-color: var(--warn); }
+
+.attachment-dialog {
+  padding: 0;
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 80px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-bubble);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.attachment-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.attachment-dialog-body { display: grid; gap: var(--s12); padding: var(--s16); min-width: 0; }
+.attachment-dialog-heading { display: flex; align-items: center; gap: var(--s8); }
+.attachment-dialog-heading > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.attachment-dialog-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 50vh;
+  overflow-y: auto;
+  font-size: var(--text-ui-s);
+  margin: 0;
+}
+
+.attachment-large-image { max-width: 100%; max-height: 60vh; object-fit: contain; justify-self: center; }
+.message-attachments { display: flex; flex-wrap: wrap; gap: var(--s8); margin-bottom: var(--s8); }
+.message-attachment { display: inline-flex; align-items: center; gap: var(--s8); min-width: 0; max-width: 100%; padding: var(--s8); border: 1px solid var(--border); border-radius: var(--r-inline); }
+.message-attachment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-attachment small { flex-shrink: 0; }
 
 /* 粘贴进来还没发出去的图片 —— 缩略图一排,发送前可逐张移除 */
 .attach-row {
@@ -3014,7 +3924,7 @@ button.todo-box {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: var(--s12);
+  gap: var(--s8);
 }
 
 /* 弹层要相对各自的控件定位,并且朝上开 —— 控件条在窗口底部 */
@@ -3036,8 +3946,8 @@ button.todo-box {
   display: inline-flex;
   align-items: center;
   gap: var(--s6);
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid transparent;
+  background: transparent;
   border-radius: var(--r-pill);
   padding: var(--s6) var(--s12);
   font-size: var(--text-ui-s);
@@ -3092,9 +4002,9 @@ button.todo-box {
   position: relative;
   min-width: 30px;
   padding: var(--s4) var(--s8);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--r-inline);
-  background: var(--bubble);
+  background: transparent;
   color: var(--ink-2);
   font-size: var(--text-ui-s);
 }
@@ -3273,7 +4183,14 @@ button.todo-box {
 /* ---- 发送 ⇄ 停止 ---- */
 
 .send {
-  min-width: 76px;
+  display: inline-flex;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: var(--r-control);
+  align-items: center;
   justify-content: center;
 }
 
@@ -3434,10 +4351,9 @@ button.todo-box {
   }
 }
 
-/* 1600:侧栏不变宽,多出来的宽度全给对话区;正文仍封顶 720 并居左 */
+/* 1600:侧栏不变宽,多出来的宽度全给对话区;内容列仍封顶 720 并居中 */
 @media (min-width: 1600px) {
-  .transcript {
-    padding-left: var(--s32);
-    padding-right: var(--s32);
+  .main {
+    --conversation-padding: var(--s32);
   }
 }

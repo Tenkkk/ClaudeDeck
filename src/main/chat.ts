@@ -18,6 +18,7 @@ import {
 import { coerceValues, fieldsFromSchema } from './elicit.js'
 import { createClaudeSpawner } from './spawn.js'
 import { applyToolResult, rowFromToolUse } from './tools.js'
+import { createToolImageBridge, isLocalImageChannel, TOOL_IMAGE_NOTICE, type ToolImageBridge } from './tool-image-compat.js'
 import type {
   AskAnswer,
   ChatEvent,
@@ -169,6 +170,7 @@ export class ChatSession {
   private disposed = false
   /** 消费循环停了而且不是我们拆的 —— CLI 进程死了,inbox 里的消息没人收 */
   private broken = false
+  private imageBridge: ToolImageBridge | null = null
 
   /** 死掉的 query 收不了消息,发消息前要先重开(resume 同一条会话) */
   get dead(): boolean {
@@ -193,12 +195,23 @@ export class ChatSession {
 
   constructor(private readonly emit: (event: ChatEvent) => void) {}
 
-  start(opts: StartOptions): void {
+  async start(opts: StartOptions): Promise<void> {
     this.sessionId = opts.resume ?? null
     // 从已有会话续上来的,磁盘上当然有东西
     this.persisted = Boolean(opts.resume)
     this.permissionMode = opts.permissionMode
     this.cwd = opts.cwd
+
+    const env = { ...process.env, ...credentialEnv() } as Record<string, string>
+    if (isLocalImageChannel(env.ANTHROPIC_BASE_URL) && !env.CLAUDE_CODE_USE_BEDROCK && !env.CLAUDE_CODE_USE_VERTEX && !env.CLAUDE_CODE_USE_FOUNDRY) {
+      const bridge = await createToolImageBridge(env.ANTHROPIC_BASE_URL, () => {
+        if (!this.disposed) this.emit({ type: 'compatibility', message: TOOL_IMAGE_NOTICE })
+      })
+      if (this.disposed) { bridge.close(); return }
+      this.imageBridge = bridge
+      env.ANTHROPIC_BASE_URL = bridge.baseUrl
+    }
+    if (this.disposed) return
 
     this.q = query({
       prompt: this.inbox,
@@ -230,7 +243,10 @@ export class ChatSession {
         enableFileCheckpointing: true,
         // 开了主对话会被子 Agent 的自言自语冲垮(坑 4.5)
         forwardSubagentText: false,
-        env: { ...process.env, ...credentialEnv() } as Record<string, string>,
+        env,
+        // CLI 加载 settings.env 时会覆盖启动环境。只在本次会话固定兼容地址,
+        // 不写用户配置,也不覆盖模型、凭据或权限。
+        ...(this.imageBridge ? { settings: { env: { ANTHROPIC_BASE_URL: this.imageBridge.baseUrl } } } : {}),
 
         // MCP 服务要你填表 · §14。requestedSchema 是标准 JSON Schema,
         // 所以这里能写通用渲染器。
@@ -477,6 +493,9 @@ export class ChatSession {
         const tail = this.spawner.stderrTail().slice(-300)
         this.emit({ type: 'error', message: tail ? `${detail}(stderr: ${tail})` : detail })
       }
+    } finally {
+      this.imageBridge?.close()
+      this.imageBridge = null
     }
   }
 
@@ -961,6 +980,8 @@ export class ChatSession {
   dispose(immediate = false): void {
     if (this.disposed) return
     this.disposed = true
+    this.imageBridge?.close()
+    this.imageBridge = null
     /*
      * 收卡再结账。此刻事件围栏还认这个会话(active 的重指在 dispose 返回
      * 之后),dismiss 发得出去。换会话时渲染层自己也会清卡,重复无害;

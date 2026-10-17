@@ -9,22 +9,29 @@ import Message from './components/Message.js'
 import FileTree from './components/FileTree.js'
 import MidColumn from './components/MidColumn.js'
 import PlanCard from './components/PlanCard.js'
+import ProjectMenu from './components/ProjectMenu.js'
 import SearchPalette from './components/SearchPalette.js'
 import SessionMenu from './components/SessionMenu.js'
 import SettingsDialog from './components/SettingsDialog.js'
 import Sidebar from './components/Sidebar.js'
 import TitleBar from './components/TitleBar.js'
 import Markdown from './components/Markdown.js'
+import { ImageChatContext } from './components/ImageMenu.js'
 import AgentsPanel from './components/AgentsPanel.js'
 import McpPanel from './components/McpPanel.js'
 import Resizer from './components/Resizer.js'
-import { clampMidcol, clampSidebar, loadWidths, saveWidths } from './lib/columns.js'
+import { CHAT_MIN, clampMidcol, clampSidebar, loadWidths, saveWidths } from './lib/columns.js'
 import Thinking from './components/Thinking.js'
 import Thought from './components/Thought.js'
 import ToolRow from './components/ToolRow.js'
+import ToolGroup from './components/ToolGroup.js'
 import Loading from './screens/Loading.js'
 import Onboarding from './screens/Onboarding.js'
 import ProjectPicker from './screens/ProjectPicker.js'
+import CreateProjectDialog from './components/CreateProjectDialog.js'
+import AttachmentCards from './components/AttachmentCards.js'
+import { useComposer } from './lib/composer.js'
+import { LONG_PASTE_THRESHOLD } from '../../shared/attachments.js'
 import {
   EFFORT_LEVELS,
   type AccountInfo,
@@ -36,7 +43,6 @@ import {
   type BackgroundTask,
   type ClaudeEntry,
   type ElicitationCard as ElicitationCardData,
-  type ImageAttachment,
   type PlanCard as PlanCardData,
   type EffortLevel,
   type ModelOption,
@@ -121,14 +127,30 @@ function stamp(item: TranscriptItem): TranscriptItem {
 const TranscriptList = memo(function TranscriptList({
   items,
   onFork,
+  busy,
+  projectPath,
 }: {
   items: TranscriptItem[]
   onFork: (id: string) => void
+  busy: boolean
+  projectPath?: string
 }): React.JSX.Element {
+  const groups: (TranscriptItem | { kind: 'toolGroup'; rows: ToolRowData[] })[] = []
+  for (const item of items) {
+    if (item.kind === 'tool' && item.row.tool !== 'todo' && !item.row.failed &&
+      !(item.row.tool === 'bash' && (item.row.interrupted || item.row.stderr?.trim())) &&
+      !(item.row.tool === 'other' && ['AskUserQuestion', 'ExitPlanMode'].includes(item.row.name))) {
+      const previous = groups[groups.length - 1]
+      if (previous?.kind === 'toolGroup') previous.rows.push(item.row)
+      else groups.push({ kind: 'toolGroup', rows: [item.row] })
+    } else groups.push(item)
+  }
   return (
     <>
-      {items.map((item, i) =>
-        item.kind === 'tool' ? (
+      {groups.map((item, i) =>
+        item.kind === 'toolGroup' ? (
+          <ToolGroup key={`tools-${item.rows[0].id}`} rows={item.rows} running={busy && i === groups.length - 1} />
+        ) : item.kind === 'tool' ? (
           <ToolRow key={item.row.id} row={item.row} />
         ) : item.kind === 'thinking' ? (
           <Thought key={item.uid ?? `i${i}`} text={item.text} />
@@ -149,7 +171,9 @@ const TranscriptList = memo(function TranscriptList({
             ts={item.ts}
             id={item.id}
             images={item.kind === 'user' ? item.images : undefined}
+            attachments={item.kind === 'user' ? item.attachments : undefined}
             onFork={onFork}
+            projectPath={projectPath}
           />
         ),
       )}
@@ -188,22 +212,31 @@ export default function App(): React.JSX.Element {
   const [permissions, setPermissions] = useState<PendingPermission[]>([])
   const [elicitations, setElicitations] = useState<ElicitationCardData[]>([])
   const [unknownDialog, setUnknownDialog] = useState<string | null>(null)
+  const [compatibilityNotice, setCompatibilityNotice] = useState<string | null>(null)
+  const compatibilityTimer = useRef<number | null>(null)
   const [asks, setAsks] = useState<AskCardData[]>([])
   const [plans, setPlans] = useState<PlanCardData[]>([])
   const [menu, setMenu] = useState<{
     session: SessionListItem
     at: { x: number; y: number }
   } | null>(null)
+  const [projectMenu, setProjectMenu] = useState<{
+    project: AppConfig['projects'][number]
+    at: { x: number; y: number }
+    trigger: HTMLButtonElement
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
-  /** 粘贴进输入框、还没发出去的图片 */
-  const [images, setImages] = useState<ImageAttachment[]>([])
+  const composer = useComposer()
+  const { draft, setDraft, files: attachmentFiles, processing: attachmentProcessing } = composer
+  const sending = useRef(false)
+  const [draggingFiles, setDraggingFiles] = useState(false)
   /** 撞到额度上限时的说明行,点掉或本轮结束自动消失 */
   const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const [commands, setCommands] = useState<SlashCommandItem[]>([])
   const [paletteIndex, setPaletteIndex] = useState(0)
   const [controlRequest, setControlRequest] = useState<'model' | 'effort' | null>(null)
   const [widths, setWidths] = useState(loadWidths)
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth)
   const [turnStartedAt, setTurnStartedAt] = useState(0)
   const [turnStatus, setTurnStatus] = useState<TurnStatus>(null)
   const [outputTokens, setOutputTokens] = useState(0)
@@ -211,11 +244,19 @@ export default function App(): React.JSX.Element {
   /** 中栏在浏览哪个项目的文件树 */
   const [filesProject, setFilesProject] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [createProjectOpen, setCreateProjectOpen] = useState(false)
+  const createProjectTrigger = useRef<HTMLElement | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   /** 侧栏收起时,shell 的栅格去掉那一列 */
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [openFile, setOpenFile] = useState<{ project: string; path: string } | null>(null)
   const [fileDirty, setFileDirty] = useState(false)
+
+  useEffect(() => {
+    const onResize = (): void => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [tasks, setTasks] = useState<BackgroundTask[]>([])
   const [forkFrom, setForkFrom] = useState<string | null>(null)
   /** 刚发出、还没在 SDK 的 store 里露面的那条会话 —— 侧栏先摆着 */
@@ -228,6 +269,7 @@ export default function App(): React.JSX.Element {
    */
   const [deletedSessions, setDeletedSessions] = useState<string[]>([])
   const transcriptRef = useRef<HTMLDivElement>(null)
+  const [showLatest, setShowLatest] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
 
   const activeSessionRef = useRef<string | null>(null)
@@ -335,6 +377,14 @@ export default function App(): React.JSX.Element {
   }, [reload])
 
   useEffect(() => {
+    setCompatibilityNotice(null)
+    return () => {
+      if (compatibilityTimer.current !== null) window.clearTimeout(compatibilityTimer.current)
+      compatibilityTimer.current = null
+    }
+  }, [])
+
+  useEffect(() => {
     const handleEvent = (event: ChatEvent, at: number, replaying = false): void => {
       /** 把攒着的思考定格落进对话流 —— 正文开口、工具插入、轮次收尾都要 */
       const flushThinking = (): void => {
@@ -357,6 +407,8 @@ export default function App(): React.JSX.Element {
         }
       }
       if (event.type === 'session') {
+        // 使用草稿自身的项目,事件订阅不捕获可能过期的 config。
+        composer.renameDraft('', event.sessionId)
         setActiveSession(event.sessionId)
         activeSessionRef.current = event.sessionId
         // 一发出去侧栏就该多出这条,而不是等这一轮答完。session_id 在本轮
@@ -367,6 +419,7 @@ export default function App(): React.JSX.Element {
         const item = stamp({
           kind: 'user', text: event.text, ts: at,
           ...(event.images > 0 ? { images: event.images } : {}),
+          ...(event.attachments?.length ? { attachments: event.attachments } : {}),
         })
         setTranscript((tr) => [...tr, item])
         setError(null)
@@ -426,6 +479,16 @@ export default function App(): React.JSX.Element {
         setOutputTokens(event.outputTokens)
       } else if (event.type === 'unknownDialog') {
         setUnknownDialog(event.notice.dialogKind)
+      } else if (event.type === 'compatibility') {
+        // 只提示当下的降级,切回时不重放旧提示;重复事件从最后一次计时。
+        if (!replaying) {
+          if (compatibilityTimer.current !== null) window.clearTimeout(compatibilityTimer.current)
+          setCompatibilityNotice(event.message)
+          compatibilityTimer.current = window.setTimeout(() => {
+            compatibilityTimer.current = null
+            setCompatibilityNotice(null)
+          }, 5000)
+        }
       } else if (event.type === 'permission') {
         setPermissions((q) =>
           q.some((p) => p.requestId === event.requestId)
@@ -484,6 +547,7 @@ export default function App(): React.JSX.Element {
       }
       if (message.viewId !== viewIdRef.current) return
       if (message.type === 'restore') {
+        if (message.sessionId) composer.renameDraft(message.workspace, message.sessionId)
         resetTurnState()
         setTranscript(message.history.map(stamp))
         setActiveSession(message.sessionId)
@@ -519,6 +583,7 @@ export default function App(): React.JSX.Element {
     if (!el) return
     const onScroll = (): void => {
       stickRef.current = el.scrollHeight - el.clientHeight - el.scrollTop < 24
+      setShowLatest(!stickRef.current)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -538,6 +603,7 @@ export default function App(): React.JSX.Element {
   // 换会话就当作重新贴底:载入的是另一段历史,应当看见最后一条
   useEffect(() => {
     stickRef.current = true
+    setShowLatest(false)
     const el = transcriptRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [activeSession])
@@ -622,6 +688,9 @@ export default function App(): React.JSX.Element {
     setPlans([])
     setElicitations([])
     setUnknownDialog(null)
+    if (compatibilityTimer.current !== null) window.clearTimeout(compatibilityTimer.current)
+    compatibilityTimer.current = null
+    setCompatibilityNotice(null)
   }
 
   /** 每次选择先更换视图标识,旧事件和旧异步结果立即失效。 */
@@ -629,6 +698,8 @@ export default function App(): React.JSX.Element {
   async function selectSession(projectPath?: string, sessionId?: string): Promise<void> {
     const gen = ++openGen.current
     const viewId = crypto.randomUUID()
+    composer.switchDraft(projectPath ?? config?.activeWorkspace ?? '', sessionId ?? `new:${viewId}`)
+    setDraggingFiles(false)
     viewIdRef.current = viewId
     switchingRef.current = true
     setSwitching(true)
@@ -679,14 +750,46 @@ export default function App(): React.JSX.Element {
     await selectSession(projectPath)
   }
 
+  async function removeListedProject(path: string): Promise<void> {
+    // 移除后该目录不再可写,不能留下失去保存权限的草稿。
+    if (openFile?.project === path && dirtyRef.current) {
+      throw new Error('该项目有未保存的文件,请先保存或关闭文件后再移除。')
+    }
+    const generation = openGen.current
+    const removingActive = config?.activeWorkspace === path
+    const cfg = await window.api.projects.remove(path)
+    setConfig(cfg)
+    if (removingActive && generation === openGen.current) {
+      if (cfg.activeWorkspace) {
+        await newSession(cfg.activeWorkspace)
+      } else {
+        ++openGen.current
+        viewIdRef.current = ''
+        resetTurnState()
+        setTranscript([])
+        setActiveSession(null)
+        activeSessionRef.current = null
+        setPendingSession(null)
+        setCreateProjectOpen(false)
+        setPhase('projects')
+      }
+    }
+    // 项目移除已经成功,列表刷新失败不能让人再次提交移除。
+    try {
+      await refreshSessions()
+    } catch (err) {
+      setError(`会话列表刷新失败:${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   async function send(): Promise<void> {
-    if (switchingRef.current) return
+    if (switchingRef.current || sending.current || attachmentProcessing || attachmentFiles.some((f) => f.status !== 'ready')) return
     const text = draft.trim()
-    if (!text && images.length === 0) return
+    if (!text && attachmentFiles.length === 0) return
 
     // 这几条是界面自己的命令,不是给 agent 的(带图时当普通消息发)。
     // 终端里 /model 由 CLI 的界面层处理,发给 agent 只会石沉大海。
-    if (images.length === 0) {
+    if (attachmentFiles.length === 0) {
       const ui = UI_COMMANDS[text.toLowerCase()]
       if (ui) {
         setDraft('')
@@ -702,9 +805,11 @@ export default function App(): React.JSX.Element {
       }
     }
 
-    setDraft('')
-    const sendImages = images
-    setImages([])
+    sending.current = true
+    const sendFiles = attachmentFiles
+    const originalDraft = draft
+    const recoverDraft = composer.recovery(originalDraft, sendFiles)
+    composer.clear()
 
     /*
      * 侧栏那一条要**现在**就出现,不是等这一轮答完。
@@ -720,16 +825,18 @@ export default function App(): React.JSX.Element {
     const ws = config?.activeWorkspace
     if (ws) {
       const known = (sessionsByProject[ws] ?? []).some((s) => s.sessionId === activeSessionRef.current)
-      if (!known) setPendingSession({ path: ws, title: text || '(图片)' })
+      if (!known) setPendingSession({ path: ws, title: text || sendFiles[0]?.name || '(附件)' })
     }
     const viewId = viewIdRef.current
     try {
-      await window.api.chat.send(text, sendImages, viewId)
+      const sent = await window.api.chat.send(text, [], viewId, sendFiles.map((f) => f.attachment!.id))
+      if (!sent) throw new Error('会话已切换,消息未发送。')
     } catch (err) {
+      recoverDraft()
       if (viewId !== viewIdRef.current) return
       setError(`发送失败:${err instanceof Error ? err.message : String(err)}`)
-      setDraft(text)
-      setImages(sendImages)
+    } finally {
+      sending.current = false
     }
   }
 
@@ -762,6 +869,33 @@ export default function App(): React.JSX.Element {
     </div>
   )
 
+  function openCreateProject(): void {
+    createProjectTrigger.current = document.activeElement as HTMLElement | null
+    setCreateProjectOpen(true)
+  }
+
+  const createProjectDialog = createProjectOpen && (
+    <CreateProjectDialog
+      returnFocus={createProjectTrigger.current}
+      onClose={() => setCreateProjectOpen(false)}
+      onCreated={async (cfg) => {
+        setConfig(cfg)
+        setCreateProjectOpen(false)
+        if (phase === 'projects') {
+          setPhase('workspace')
+          return
+        }
+        // 登记已经成功,后续会话初始化失败不能重复提交创建。
+        try {
+          if (cfg.activeWorkspace) await newSession(cfg.activeWorkspace)
+          await refreshSessions()
+        } catch (err) {
+          setError(`项目已创建,会话初始化失败:${err instanceof Error ? err.message : String(err)}`)
+        }
+      }}
+    />
+  )
+
   if (phase === 'loading') return bare(<Loading />)
 
   if (phase === 'onboarding') {
@@ -770,19 +904,20 @@ export default function App(): React.JSX.Element {
 
   if (phase === 'projects') {
     return bare(
-      <ProjectPicker
-        config={config}
-        onAdd={async () => {
-          const cfg = await window.api.projects.add()
-          setConfig(cfg)
-          if (cfg.activeWorkspace) setPhase('workspace')
-        }}
-        onUse={async (path) => {
-          setConfig(await window.api.projects.activate(path))
-          setPhase('workspace')
-        }}
-        onRemove={async (path) => setConfig(await window.api.projects.remove(path))}
-      />,
+      <>
+        {createProjectDialog}
+        <div className="project-picker-host" inert={createProjectOpen}>
+          <ProjectPicker
+            config={config}
+            onAdd={openCreateProject}
+            onUse={async (path) => {
+              setConfig(await window.api.projects.activate(path))
+              setPhase('workspace')
+            }}
+            onRemove={async (path) => setConfig(await window.api.projects.remove(path))}
+          />
+        </div>
+      </>,
     )
   }
 
@@ -835,16 +970,20 @@ export default function App(): React.JSX.Element {
 
   /** 中栏开着没有 —— 树和文件都算 */
   const midOpen = openFile !== null || filesProject !== null
+  const visibleSidebarWidth = sidebarOpen ? widths.sidebar : 0
+  const fileWidth = viewportWidth <= 1040
+    ? Math.min(widths.midcol, viewportWidth - visibleSidebarWidth)
+    : clampMidcol(widths.midcol, { viewport: viewportWidth, sidebar: visibleSidebarWidth })
   const projectNameOf = (path: string): string =>
     config?.projects.find((p) => p.path === path)?.name ?? path
 
   // 窗口左边缘就是 shell 的左边缘(没有更外层的容器),所以 clientX 直接
-  // 就是侧栏宽度;中栏那道线要先减掉侧栏。
+  // 就是侧栏宽度;右侧文件区从窗口右边缘反向计算。
   function resizeSidebar(px: number): void {
     const next = clampSidebar(px, {
       viewport: window.innerWidth,
-      midcol: widths.midcol,
-      midOpen,
+      midcol: fileWidth,
+      midOpen: midOpen && window.innerWidth > 1040,
     })
     const w = { ...widths, sidebar: next }
     setWidths(w)
@@ -852,7 +991,10 @@ export default function App(): React.JSX.Element {
   }
 
   function resizeMidcol(px: number): void {
-    const next = clampMidcol(px, { viewport: window.innerWidth, sidebar: widths.sidebar })
+    const next = clampMidcol(px, {
+      viewport: window.innerWidth + (window.innerWidth <= 1040 ? CHAT_MIN : 0),
+      sidebar: visibleSidebarWidth,
+    })
     const w = { ...widths, midcol: next }
     setWidths(w)
     saveWidths(w)
@@ -860,12 +1002,16 @@ export default function App(): React.JSX.Element {
 
   return (
     // 宽度变量放在最外层:标题栏要按侧栏宽度切换底色,它在 shell 之外
+    <ImageChatContext.Provider value={(project, source) => composer.addImage(project, () => {
+      if (typeof window.api.files.imageAttach !== 'function') throw new Error('图片操作接口尚未加载,请重启应用。')
+      return window.api.files.imageAttach(project, source)
+    })}>
     <div
       className={`app${sidebarOpen ? '' : ' no-sidebar'}`}
       style={
         {
           '--w-sidebar': `${widths.sidebar}px`,
-          '--w-midcol': `${widths.midcol}px`,
+          '--w-midcol': `${fileWidth}px`,
         } as React.CSSProperties
       }
     >
@@ -902,7 +1048,9 @@ export default function App(): React.JSX.Element {
         />
       )}
 
-      <div className={`shell${midOpen ? ' with-mid' : ''}${sidebarOpen ? '' : ' no-sidebar'}`}>
+      {createProjectDialog}
+
+      <div className={`shell${midOpen ? ' with-mid' : ''}${sidebarOpen ? '' : ' no-sidebar'}`} inert={createProjectOpen}>
         {sidebarOpen && (
       <Sidebar
         projects={config?.projects ?? []}
@@ -913,21 +1061,22 @@ export default function App(): React.JSX.Element {
         account={account}
         versions={versions}
         expandedAll={expandedAll}
-        onNewSession={() => void newSession()}
         onNewSessionIn={(path) => void newSession(path)}
         onOpenSession={(p, id) => void openSession(p, id)}
-        onSessionMenu={(session, at) => setMenu({ session, at })}
+        onSessionMenu={(session, at) => {
+          setProjectMenu(null)
+          setMenu({ session, at })
+        }}
+        onProjectMenu={(project, at, trigger) => {
+          setMenu(null)
+          setProjectMenu({ project, at, trigger })
+        }}
         onToggleCollapse={async (path, collapsed) => {
           setConfig(await window.api.projects.collapse(path, collapsed))
         }}
         onExpandAll={(path) => setExpandedAll((e) => ({ ...e, [path]: !e[path] }))}
-        onAddProject={async () => {
-          const cfg = await window.api.projects.add()
-          setConfig(cfg)
-          await refreshSessions()
-        }}
-        onManageProjects={() => setPhase('projects')}
-        filesProject={filesProject}
+        onAddProject={openCreateProject}
+        filesProject={openFile?.project ?? filesProject}
         onOpenFiles={(path) => {
           // 再点一次收起。切到另一个项目时,已经打开的文件要跟着让位 ——
           // 否则会出现「树是 A 项目的、右边开着 B 项目的文件」
@@ -952,33 +1101,9 @@ export default function App(): React.JSX.Element {
         <Resizer
           className="resizer-midcol"
           label="调整文件栏宽度"
-          onDrag={(x) => resizeMidcol(x - widths.sidebar)}
-          onNudge={(d) => resizeMidcol(widths.midcol + d)}
+          onDrag={(x) => resizeMidcol(window.innerWidth - x)}
+          onNudge={(d) => resizeMidcol(fileWidth - d)}
         />
-      )}
-
-      {/* 中栏两种形态:开着某个文件就看文件,否则看这个项目的文件树 */}
-      {openFile ? (
-        <MidColumn
-          projectPath={openFile.project}
-          projectName={projectNameOf(openFile.project)}
-          relPath={openFile.path}
-          onClose={() => {
-            setOpenFile(null)
-            setFilesProject(null)
-          }}
-          onBack={filesProject ? () => setOpenFile(null) : undefined}
-          onDirtyChange={setFileDirty}
-        />
-      ) : (
-        filesProject && (
-          <FileTree
-            projectPath={filesProject}
-            projectName={projectNameOf(filesProject)}
-            onClose={() => setFilesProject(null)}
-            onOpenFile={(relPath) => setOpenFile({ project: filesProject, path: relPath })}
-          />
-        )
       )}
 
       <main className="main">
@@ -992,7 +1117,7 @@ export default function App(): React.JSX.Element {
           <span className="title">
             {activeSessions.find((s) => s.sessionId === activeSession)?.title ?? '新会话'}
           </span>
-          {/* 文件入口在这儿也放一个:侧栏那个挂在项目下,这个对的是「当前这个会话
+          {/* 文件入口在这儿也放一个:侧栏那个在各项目行右侧,这个对的是「当前这个会话
               在哪个目录里干活」—— 边聊边翻文件时,手不用跑到侧栏去 */}
           {config?.activeWorkspace && (
             <button
@@ -1015,12 +1140,12 @@ export default function App(): React.JSX.Element {
         <div className="transcript" ref={transcriptRef}>
           {transcript.length === 0 && !streaming && (
             <div className="empty-state">
-              <span className="brand-dot breathing" />
-              <div>问点什么开始。Claude Code 会在当前项目目录里读写文件。</div>
+              <h1>今天想做些什么?</h1>
+              <p>从一个问题开始。Claude Code 会在当前项目目录里读写文件。</p>
             </div>
           )}
 
-          <TranscriptList items={transcript} onFork={setForkFrom} />
+          <TranscriptList key={activeSession ?? 'new'} items={transcript} onFork={setForkFrom} busy={busy} projectPath={config?.activeWorkspace ?? undefined} />
 
           {/* 正在想的那一段:自动展开,让人看着它在动 */}
           {thinking && <Thought text={thinking} live />}
@@ -1031,7 +1156,7 @@ export default function App(): React.JSX.Element {
               {/* 流式过程中也走 Markdown:半截的代码块、没闭合的粗体都要能画,
                   不然文字会在收尾那一刻整段重排,读起来像闪了一下 */}
               <div className="msg-claude">
-                <Markdown text={streaming} />
+                <Markdown text={streaming} projectPath={config?.activeWorkspace ?? undefined} />
                 <span className="stream-caret" />
               </div>
             </div>
@@ -1071,7 +1196,7 @@ export default function App(): React.JSX.Element {
                 )}
               </div>
               {/* 改文件的批准先看得见改什么 —— diff 预览复用工具行 */}
-              {permission.preview && <ToolRow row={permission.preview} />}
+              {permission.preview && <ToolRow row={permission.preview} defaultExpanded />}
               {permission.decisionReason && <div className="hint">{permission.decisionReason}</div>}
               {permission.blockedPath && (
                 <div className="hint">
@@ -1159,6 +1284,12 @@ export default function App(): React.JSX.Element {
           )}
 
           {/* §06 兜底:收到这个版本还不会画的 dialogKind,已回 cancelled */}
+          {compatibilityNotice && (
+            <div className="notice" role="status">
+              <span className="notice-icon" aria-hidden="true">⊙</span>
+              <span>{compatibilityNotice}</span>
+            </div>
+          )}
           {unknownDialog && (
             <div className="notice" onClick={() => setUnknownDialog(null)}>
               <span className="notice-icon">⊙</span>
@@ -1200,6 +1331,17 @@ export default function App(): React.JSX.Element {
           {error && <div className="error-line">{error}</div>}
         </div>
 
+        {showLatest && (
+          <button className="scroll-latest" onClick={() => {
+            stickRef.current = true
+            const el = transcriptRef.current
+            if (el) el.scrollTop = el.scrollHeight
+            setShowLatest(false)
+          }}>
+            回到最新
+          </button>
+        )}
+
         {/* §05:输入框与控件条是同一张卡,控件在卡内底部 */}
         <div className="composer-wrap" inert={switching} aria-busy={switching}>
           {paletteOpen && (
@@ -1211,53 +1353,59 @@ export default function App(): React.JSX.Element {
               onPick={pickCommand}
             />
           )}
-          <div className="composer">
-            {images.length > 0 && (
-              <div className="attach-row">
-                {images.map((img, i) => (
-                  <span key={i} className="attach-chip">
-                    <img
-                      className="attach-img"
-                      src={`data:${img.mediaType};base64,${img.data}`}
-                      alt={`粘贴的图片 ${i + 1}`}
-                    />
-                    <button
-                      className="attach-x"
-                      title="移除这张图"
-                      onClick={() => setImages((list) => list.filter((_, j) => j !== i))}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
+          <div className={`composer${draggingFiles ? ' file-dragging' : ''}`}
+            onDragOver={(e) => {
+              if (!Array.from(e.dataTransfer.types).includes('Files')) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'copy'
+              setDraggingFiles(true)
+            }}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingFiles(false) }}
+            onDrop={(e) => {
+              if (!e.dataTransfer.files.length) return
+              e.preventDefault()
+              setDraggingFiles(false)
+              void composer.addFiles(Array.from(e.dataTransfer.files))
+            }}>
+            {draggingFiles && <div className="attachment-hint">松开以添加图片、文档或文本</div>}
+            <AttachmentCards key={viewIdRef.current} files={attachmentFiles} project={config?.activeWorkspace ?? ''}
+              onRemove={composer.remove} onRestore={(text) => {
+                const el = composerRef.current
+                const start = el?.selectionStart ?? draft.length
+                const end = el?.selectionEnd ?? start
+                setDraft(draft.slice(0, start) + text + draft.slice(end))
+                setTimeout(() => { el?.focus(); el?.setSelectionRange(start + text.length, start + text.length) }, 0)
+              }} />
+            {attachmentProcessing && <div className="attachment-hint" role="status">正在处理附件,完成后可发送…</div>}
+            {composer.attachmentError && <div className="attachment-file-error" role="alert">{composer.attachmentError}</div>}
             <textarea
               ref={composerRef}
               value={draft}
               placeholder={
                 busy
                   ? '正在回答…这条会排队,答完接着发(Enter 发送)'
-                  : '给 Claude Code 发消息…(Enter 发送,Shift+Enter 换行,/ 唤出命令,可粘贴图片)'
+                  : '给 Claude 发消息…'
               }
               onChange={(e) => setDraft(e.target.value)}
               onPaste={(e) => {
-                // 只接管图片,普通文本粘贴照旧走默认行为
                 const files = Array.from(e.clipboardData.items)
-                  .filter((it) => it.kind === 'file' && /^image\/(png|jpeg|gif|webp)$/.test(it.type))
+                  .filter((it) => it.kind === 'file')
                   .map((it) => it.getAsFile())
                   .filter((f): f is File => f !== null)
-                if (files.length === 0) return
-                e.preventDefault()
-                for (const f of files) {
-                  const mediaType = f.type as ImageAttachment['mediaType']
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    const url = typeof reader.result === 'string' ? reader.result : ''
-                    const data = url.slice(url.indexOf(',') + 1)
-                    if (data) setImages((list) => [...list, { mediaType, data }])
+                const text = e.clipboardData.getData('text/plain')
+                if (files.length) {
+                  e.preventDefault()
+                  void composer.addFiles(files)
+                  // 同时有文件与文字时保留文字,不静默吞掉剪贴板内容。
+                  if (text.length > LONG_PASTE_THRESHOLD) void composer.addPaste(text)
+                  else if (text) {
+                    const start = e.currentTarget.selectionStart
+                    const end = e.currentTarget.selectionEnd
+                    setDraft(draft.slice(0, start) + text + draft.slice(end))
                   }
-                  reader.readAsDataURL(f)
+                } else if (text.length > LONG_PASTE_THRESHOLD) {
+                  e.preventDefault()
+                  void composer.addPaste(text)
                 }
               }}
               onKeyDown={(e) => {
@@ -1304,7 +1452,9 @@ export default function App(): React.JSX.Element {
               model={config?.model ?? 'default'}
               effort={config?.effort ?? 'medium'}
               busy={busy}
-              canSend={Boolean(draft.trim()) || images.length > 0}
+              canSend={!attachmentProcessing && !attachmentFiles.some((f) => f.status !== 'ready') && (Boolean(draft.trim()) || attachmentFiles.length > 0)}
+              onAttach={() => void composer.choose()}
+              attaching={attachmentProcessing}
               context={context}
               usage={usage}
               contextWarnAt={CONTEXT_WARN_AT}
@@ -1344,6 +1494,52 @@ export default function App(): React.JSX.Element {
         </div>
 
       </main>
+
+      {/* 文件树与文件内容共用右侧区域,对话组件始终保留 */}
+      {openFile ? (
+        <MidColumn
+          key={`${openFile.project}/${openFile.path}`}
+          projectPath={openFile.project}
+          projectName={projectNameOf(openFile.project)}
+          relPath={openFile.path}
+          onClose={() => {
+            setOpenFile(null)
+            setFilesProject(null)
+          }}
+          onBack={filesProject ? () => setOpenFile(null) : undefined}
+          onDirtyChange={setFileDirty}
+        />
+      ) : (
+        filesProject && (
+          <FileTree
+            projectPath={filesProject}
+            projectName={projectNameOf(filesProject)}
+            onClose={() => setFilesProject(null)}
+            onOpenFile={(relPath) => {
+              setWidths((cur) => ({ ...cur, midcol: Math.max(cur.midcol, 480) }))
+              setOpenFile({ project: filesProject, path: relPath })
+            }}
+          />
+        )
+      )}
+
+      {projectMenu && (
+        <ProjectMenu
+          key={projectMenu.project.path}
+          project={projectMenu.project}
+          at={projectMenu.at}
+          onClose={() => {
+            const target = projectMenu.trigger.isConnected ? projectMenu.trigger
+              : document.querySelector<HTMLButtonElement>('.project-row, .screen-center button.primary')
+            target?.focus()
+            setProjectMenu((current) => current === projectMenu ? null : current)
+          }}
+          onRename={async (name) => {
+            setConfig(await window.api.projects.rename(projectMenu.project.path, name))
+          }}
+          onRemove={() => removeListedProject(projectMenu.project.path)}
+        />
+      )}
 
       {menu && (
         <SessionMenu
@@ -1395,5 +1591,6 @@ export default function App(): React.JSX.Element {
       )}
       </div>
     </div>
+    </ImageChatContext.Provider>
   )
 }

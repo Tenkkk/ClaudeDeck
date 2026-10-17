@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { parseMarkdown, type Block, type Inline } from '../lib/markdown.js'
+import MarkdownImage, { MarkdownImageContext } from './MarkdownImage.js'
 
 /**
  * 把解析结果画成 React 元素。
@@ -10,11 +11,12 @@ import { parseMarkdown, type Block, type Inline } from '../lib/markdown.js'
  * 代码块单独一块,带语言标签和复制按钮:聊天里贴出来的代码多半是要拿去用的,
  * 让人手选反而容易漏首尾。
  */
-export default function Markdown({ text }: { text: string }): React.JSX.Element {
+export default function Markdown({ text, projectPath, baseDir }: { text: string; projectPath?: string; baseDir?: string }): React.JSX.Element {
   // 解析只和 text 有关。不缓存的话,父组件每重渲一次就把全文重新解析一遍 ——
   // 长会话里每个 delta 都重解析整段历史,打字就是这么卡起来的
   const blocks = useMemo(() => parseMarkdown(text), [text])
-  return <div className="md">{blocks.map((b, i) => renderBlock(b, i))}</div>
+  const imageContext = useMemo(() => ({ projectPath, baseDir }), [projectPath, baseDir])
+  return <MarkdownImageContext.Provider value={imageContext}><div className="md">{blocks.map((b, i) => renderBlock(b, i))}</div></MarkdownImageContext.Provider>
 }
 
 function renderBlock(b: Block, key: number): React.JSX.Element {
@@ -121,6 +123,8 @@ function CodeBlock({ lang, text }: { lang: string; text: string }): React.JSX.El
 function renderInline(nodes: Inline[]): React.ReactNode {
   return nodes.map((n, i) => {
     switch (n.kind) {
+      case 'image':
+        return <MarkdownImage key={`${i}:${n.src}`} source={n.src} alt={n.alt} />
       case 'code':
         return (
           <code key={i} className="md-inline-code">

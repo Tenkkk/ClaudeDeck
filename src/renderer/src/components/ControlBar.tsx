@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import ContextRing from './ContextRing.js'
 import Popover from './Popover.js'
 import TaskChip from './TaskChip.js'
+import { AttachmentIcon } from './AttachmentCards.js'
 import {
   EFFORT_LEVELS,
   PERMISSION_MODES,
@@ -28,6 +29,8 @@ export default function ControlBar({
   effort,
   busy,
   canSend,
+  onAttach,
+  attaching,
   onMode,
   onModel,
   onEffort,
@@ -48,6 +51,8 @@ export default function ControlBar({
   effort: EffortLevel
   busy: boolean
   canSend: boolean
+  onAttach?: () => void
+  attaching?: boolean
   onMode: (m: PermissionMode) => void
   onModel: (v: string) => void
   onEffort: (v: EffortLevel) => void
@@ -113,6 +118,7 @@ export default function ControlBar({
 
   return (
     <div className="controls">
+      {onAttach && <button className="chip attachment-add" aria-label="添加附件" title="添加图片、文档或文本" disabled={attaching} onClick={onAttach}><AttachmentIcon /></button>}
       {/* ---- 权限 ---- */}
       <div className="control-slot">
         <button
@@ -274,13 +280,14 @@ export default function ControlBar({
         </div>
 
         {busy ? (
-          <button className="btn-stop send" data-state="stop" onClick={onStop}>
+          <button className="btn-stop send" data-state="stop" aria-label="停止" title="停止回答" onClick={onStop}>
             <span className="stop-glyph" />
-            停止
           </button>
         ) : (
-          <button className="primary send" data-state="send" disabled={!canSend} onClick={onSend}>
-            发送
+          <button className="primary send" data-state="send" aria-label="发送" title="发送消息（Enter）" disabled={!canSend} onClick={onSend}>
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 13V3m-5 5 5-5 5 5" />
+            </svg>
           </button>
         )}
       </div>

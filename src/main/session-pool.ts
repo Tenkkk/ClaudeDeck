@@ -1,5 +1,5 @@
 import { ChatSession, type StartOptions } from './chat.js'
-import type { ChatEvent, ChatViewEvent, ImageAttachment, TimedChatEvent, TranscriptItem } from '../shared/ipc.js'
+import type { AttachmentSummary, ChatEvent, ChatViewEvent, ImageAttachment, TimedChatEvent, TranscriptItem } from '../shared/ipc.js'
 
 interface LiveSession {
   session: ChatSession
@@ -92,7 +92,7 @@ export class SessionPool {
     })
     if (fresh) {
       try {
-        record.session.start(record.options)
+        await record.session.start(record.options)
       } catch (err) {
         this.record(record, { type: 'error', message: String(err) })
         this.drop(record)
@@ -102,11 +102,11 @@ export class SessionPool {
     return true
   }
 
-  send(text: string, images: ImageAttachment[]): void {
+  send(text: string, images: ImageAttachment[], attachments: AttachmentSummary[] = [], prompt = text): void {
     const record = this.current
     if (!record) throw new Error('会话尚未准备好,请稍后再试。')
-    record.session.send(text, images)
-    this.record(record, { type: 'sent', text, images: images.length })
+    record.session.send(prompt, images)
+    this.record(record, { type: 'sent', text, images: images.length, ...(attachments.length ? { attachments } : {}) })
   }
 
   private drop(record: LiveSession): void {

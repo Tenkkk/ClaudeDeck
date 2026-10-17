@@ -1,5 +1,8 @@
 import { memo, useState } from 'react'
 import Markdown from './Markdown.js'
+import type { AttachmentSummary } from '../../../shared/ipc.js'
+import { attachmentSize } from '../../../shared/attachments.js'
+import { AttachmentIcon } from './AttachmentCards.js'
 
 /**
  * 一条消息 —— 设计终稿 §06。
@@ -19,7 +22,9 @@ export default memo(function Message({
   ts,
   id,
   images,
+  attachments,
   onFork,
+  projectPath,
 }: {
   role: 'user' | 'assistant'
   text: string
@@ -27,7 +32,9 @@ export default memo(function Message({
   id?: string
   /** 随消息发出去的图片张数 —— 正文里看不见,至少要知道带了图 */
   images?: number
+  attachments?: AttachmentSummary[]
   onFork?: (id: string) => void
+  projectPath?: string
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const time = ts
@@ -39,8 +46,10 @@ export default memo(function Message({
       {/* 用户自己打的字保持原样 —— 他打的就是他想说的,不该被当标记语言重排。
           Claude 的正文才走 Markdown。 */}
       <div className={role === 'user' ? 'msg-user' : 'msg-claude'}>
-        {images ? <span className="msg-attach">图 ×{images}</span> : null}
-        {role === 'user' ? text : <Markdown text={text} />}
+        {attachments?.length ? <div className="message-attachments">{attachments.map((file) =>
+          <span className="message-attachment" key={file.id} title={file.name}><AttachmentIcon /><span>{file.name}</span><small>{attachmentSize(file.size)}</small></span>,
+        )}</div> : images ? <span className="msg-attach">图 ×{images}</span> : null}
+        {role === 'user' ? text : <Markdown text={text} projectPath={projectPath} />}
       </div>
       <div className="msg-slot">
         <button

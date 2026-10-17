@@ -70,11 +70,13 @@ export default function CommandPalette({
                 onMouseEnter={() => onIndex(i)}
                 onClick={() => onPick(c)}
               >
-                <span className="palette-name">/{c.name}</span>
-                <span className="palette-desc">{c.description}</span>
-                {c.argumentHint && <span className="palette-hint">{c.argumentHint}</span>}
+                <span className="palette-name" title={`/${c.name}`}>/{c.name}</span>
+                <span className="palette-desc" title={c.description}>{c.description}</span>
+                {c.argumentHint && <span className="palette-hint" title={c.argumentHint}>{c.argumentHint}</span>}
                 {c.aliases && c.aliases.length > 0 && (
-                  <span className="palette-alias">{c.aliases.map((a) => `/${a}`).join(' ')}</span>
+                  <span className="palette-alias" title={c.aliases.map((a) => `/${a}`).join(' ')}>
+                    {c.aliases.map((a) => `/${a}`).join(' ')}
+                  </span>
                 )}
               </button>
             </div>

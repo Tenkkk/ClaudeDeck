@@ -122,8 +122,7 @@ try {
   eq('正文封顶 = --w-prose', dims.prose, 720)
   eq('气泡封顶 = --w-bubble', dims.bubble, 560)
 
-  // §01:陶土只出现在三处(当前项、主按钮、等你决定的卡片)。
-  // 侧栏里就只剩「当前会话」和项目行的 ＋ —— 别的地方冒出陶土就是画错了。
+  // 侧栏当前项采用中性底色,操作图标保持中性。
   // 这类偏差是 CSS 优先级悄悄盖掉造成的,肉眼很难发现,所以钉在这里。
   console.log('\n侧栏配色 · §01 / §05')
   const sb = await page.evaluate(() => {
@@ -135,17 +134,23 @@ try {
     }
     return {
       add: cs('.project-line .project-add'),
-      // 新建会话移到品牌行右端(原先是整宽一行)。位置变了,规则没变:
-      // 陶土只出现在当前项、主按钮、等待决定的卡片,新建会话不在其中。
+      muted: getComputedStyle(document.body).getPropertyValue('--muted').trim(),
+      // 品牌行不再保留重复的新建入口。
       newSession: cs('.sidebar-brand .new-session'),
       hasBrandDot: !!document.querySelector('.sidebar-brand .brand-dot'),
     }
   })
-  const ACCENT = 'rgb(167, 95, 56)'
-  const ACCENT_TINT = 'rgb(244, 237, 229)'
-  ok('项目 ＋ 用陶土色', sb.add?.color === ACCENT, sb.add?.color)
-  ok('项目 ＋ 用陶土浅底', sb.add?.bg === ACCENT_TINT, sb.add?.bg)
-  ok('新建会话不是实心主按钮', sb.newSession?.bg === 'rgba(0, 0, 0, 0)', sb.newSession?.bg)
+  const muted = await page.evaluate((color) => {
+    const el = document.createElement('span')
+    el.style.color = color
+    document.body.append(el)
+    const value = getComputedStyle(el).color
+    el.remove()
+    return value
+  }, sb.muted)
+  ok('项目铅笔使用中性色', sb.add?.color === muted, sb.add?.color)
+  ok('项目铅笔默认无底色', sb.add?.bg === 'rgba(0, 0, 0, 0)', sb.add?.bg)
+  ok('品牌行没有重复新建入口', sb.newSession === null)
   ok('侧栏品牌位不带呼吸点', !sb.hasBrandDot)
 
   console.log('\n三档宽度 · §09')
@@ -184,7 +189,7 @@ try {
   }))
 
   ok('切到深色后底色确实变了', dark.bg !== light.bg, `${light.bg} → ${dark.bg}`)
-  eq('深色底 = --bg #1a1917', dark.bg, 'rgb(26, 25, 23)')
+  eq('深色底 = --bg #262624', dark.bg, 'rgb(38, 38, 36)')
   eq('深色正文 = --ink #eae4d9', dark.ink, 'rgb(234, 228, 217)')
   // 「圆角、间距、字号、布局全部不变」—— 布局一行都不该动
   eq('深色下侧栏仍为 264', dark.sidebar, light.sidebar)

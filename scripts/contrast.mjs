@@ -73,7 +73,7 @@ function audit(theme, tokens) {
   console.log(`\n${theme}`)
 
   // 正文与各级说明文字,分别落在三种底上
-  for (const bg of ['--bg', '--surface', '--raised']) {
+  for (const bg of ['--bg', '--surface', '--raised', '--sidebar', '--hover', '--selection']) {
     check(theme, `正文 on ${bg}`, '--ink', bg, TEXT, tokens)
     check(theme, `说明 on ${bg}`, '--ink-2', bg, TEXT, tokens)
     check(theme, `元数据 on ${bg}`, '--muted', bg, TEXT, tokens)

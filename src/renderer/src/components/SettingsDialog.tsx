@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AppConfig, DoctorReport, UpdateState } from '../../../shared/ipc.js'
 
 /**
@@ -21,7 +21,7 @@ function UpdateSection({ state }: { state: UpdateState | null }): React.JSX.Elem
             <span>正在下载 {state?.version ?? ''}</span>
             <span className="ctx-tokens">{state?.percent ?? 0}%</span>
           </div>
-          <div className="ctx-limit-bar">
+          <div className="ctx-limit-bar" role="progressbar" aria-label="更新下载进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={state?.percent ?? 0}>
             <span style={{ width: `${state?.percent ?? 0}%` }} />
           </div>
           {state?.totalMb !== undefined && (
@@ -100,7 +100,21 @@ export default function SettingsDialog({
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [section, setSection] = useState<'connection' | 'runtime' | 'about'>('connection')
   const [update, setUpdate] = useState<UpdateState | null>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const submitting = useRef(false)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    const previous = document.activeElement as HTMLElement | null
+    dialog?.showModal()
+    return () => {
+      dialog?.close()
+      if (previous?.isConnected) previous.focus()
+    }
+  }, [])
 
   useEffect(() => setBaseUrl(config?.baseUrl ?? ''), [config?.baseUrl])
 
@@ -117,120 +131,108 @@ export default function SettingsDialog({
         ? '系统 PATH 上的全局安装'
         : '未知'
 
+  async function save(clear = false): Promise<void> {
+    if (submitting.current) return
+    submitting.current = true
+    setSaving(true)
+    setSaved(false)
+    setError(null)
+    try {
+      // 留空不动原密钥;清除仍使用独立入口,不改变 IPC 约定。
+      await onSaveCredentials(baseUrl.trim(), clear ? '' : apiKey.trim() || null)
+      setApiKey('')
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败,请重试。')
+    } finally {
+      submitting.current = false
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className="dialog-veil" onClick={onClose}>
-      <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="dialog-head">
-          <strong>设置</strong>
-          <button className="ghost icon-btn" title="关闭" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-
-        <div className="dialog-body">
-          {/* ---- Claude Code ---- */}
-          <div className="pop-group">Claude Code</div>
-          <div className="set-row">
-            <span className="set-label">状态</span>
-            <span className={doctor?.cliFound ? 'set-ok' : 'set-bad'}>
-              {doctor?.cliFound ? `可用 · ${doctor.cliVersion ?? '版本未知'}` : '不可用'}
-            </span>
+    <dialog ref={dialogRef} className="dialog settings-dialog" aria-labelledby="settings-title"
+      onCancel={(e) => { e.preventDefault(); onClose() }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Tab') return
+        const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), summary')]
+          .filter((control) => control.getClientRects().length > 0)
+        const target = e.shiftKey && document.activeElement === controls[0] ? controls.at(-1)
+          : !e.shiftKey && document.activeElement === controls.at(-1) ? controls[0] : null
+        if (target) { e.preventDefault(); target.focus() }
+      }}
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return
+        const bounds = e.currentTarget.getBoundingClientRect()
+        if (e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top || e.clientY > bounds.bottom) onClose()
+      }}>
+      <div className="dialog-head">
+        <div><h1 id="settings-title">设置</h1><p>管理连接、运行环境与应用更新</p></div>
+        <button autoFocus className="ghost icon-btn" aria-label="关闭设置" title="关闭" onClick={onClose}>
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>
+        </button>
+      </div>
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="设置分类">
+          {([
+            ['connection', '连接配置'], ['runtime', '运行环境'], ['about', '关于与更新'],
+          ] as const).map(([value, label]) => <button key={value} aria-current={section === value ? 'page' : undefined}
+            onClick={() => setSection(value)}>{label}</button>)}
+          <span className="settings-nav-note">ClaudeDeck</span>
+        </nav>
+        <div className="settings-content">
+          <div className="dialog-body">
+            {section === 'connection' && <section aria-labelledby="settings-connection-title">
+              <div className="settings-section-head"><h2 id="settings-connection-title">连接配置</h2><p>设置 Claude Code 使用的 API 端点与密钥。</p></div>
+              <form id="settings-connection" onSubmit={(e) => { e.preventDefault(); void save() }}>
+                <label className="set-field">
+                  <span className="set-label">Base URL <small>可选</small></span>
+                  <input value={baseUrl} placeholder="https://api.anthropic.com" disabled={saving} spellCheck={false}
+                    onChange={(e) => { setBaseUrl(e.target.value); setSaved(false); setError(null) }} />
+                  <span className="set-field-hint">留空沿用 Claude Code 的端点配置。</span>
+                </label>
+                <label className="set-field">
+                  <span className="set-label">API Key <small>{config?.hasApiKey ? '已保存' : '未设置'}</small></span>
+                  <input type="password" value={apiKey} placeholder={config?.hasApiKey ? '输入新密钥以替换' : '输入 API 密钥（可选）'}
+                    autoComplete="off" disabled={saving}
+                    onChange={(e) => { setApiKey(e.target.value); setSaved(false); setError(null) }} />
+                  <span className="set-field-hint">留空不修改已保存密钥;未设置时沿用终端登录凭据。</span>
+                </label>
+              </form>
+              <details className="settings-details"><summary>凭据与安全</summary>
+                <p>不会修改终端的登录状态。密钥通过 Electron safeStorage（Windows DPAPI）加密保存,已保存的密钥不会回传到界面。更换请重填,移除请使用“清除密钥”。</p>
+              </details>
+            </section>}
+            {section === 'runtime' && <section aria-labelledby="settings-runtime-title">
+              <div className="settings-section-head"><h2 id="settings-runtime-title">运行环境</h2><p>查看应用实际使用的 Claude Code。</p></div>
+              <div className="settings-card">
+                <div className="settings-runtime-head"><strong>Claude Code</strong><span className={`settings-status ${doctor?.cliFound ? 'set-ok' : 'set-bad'}`}>{doctor?.cliFound ? '可用' : '不可用'}</span></div>
+                <div className="set-row"><span className="set-label">版本</span><span className="set-value mono">{doctor?.cliVersion ?? '未知'}</span></div>
+                <div className="set-row"><span className="set-label">来源</span><span className="set-value">{source}</span></div>
+              </div>
+              {doctor?.cliError && <p className="set-note set-bad" role="alert">{doctor.cliError}</p>}
+              <details className="settings-details"><summary>可执行文件与版本说明</summary>
+                {doctor?.cliPath && <p className="mono set-path">{doctor.cliPath}</p>}
+                <p>Claude Code 版本需与 Agent SDK 对齐。优先使用随安装包分发的版本,缺失时才回退到系统 PATH。</p>
+              </details>
+            </section>}
+            {section === 'about' && <section aria-labelledby="settings-about-title">
+              <div className="settings-section-head"><h2 id="settings-about-title">关于与更新</h2><p>查看当前版本,按需检查与安装更新。</p></div>
+              <div className="settings-card"><div className="settings-runtime-head"><strong>ClaudeDeck</strong><span className="settings-version mono">{update?.current ?? '—'}</span></div><p>Claude Code 的桌面聊天工作区</p></div>
+              <div className="settings-update"><h3>应用更新</h3><p className="set-note">不会自动下载或重启。安装更新前,请先结束正在执行的任务。</p><UpdateSection state={update} /></div>
+            </section>}
           </div>
-          <div className="set-row">
-            <span className="set-label">来源</span>
-            <span className="set-value">{source}</span>
-          </div>
-          {doctor?.cliPath && (
-            <div className="set-row">
-              <span className="set-label">可执行文件</span>
-              <span className="set-value mono set-path" title={doctor.cliPath}>
-                {doctor.cliPath}
-              </span>
-            </div>
-          )}
-          {doctor?.cliError && <div className="set-note set-bad">{doctor.cliError}</div>}
-          <div className="set-note">
-            版本必须与 Agent SDK 对齐,所以优先用随包分发的那份;缺失时才回退到 PATH。
-          </div>
-
-          {/* ---- 凭据 ---- */}
-          <div className="ctx-sep" />
-          <div className="pop-group">API 端点与密钥</div>
-          <div className="set-note">
-            留空则沿用你在终端里 `claude` 登录过的凭据。填了就用这一组,
-            应用不会改动你终端里的登录状态。
-          </div>
-          <label className="set-field">
-            <span className="set-label">Base URL</span>
-            <input
-              value={baseUrl}
-              placeholder="https://api.anthropic.com"
-              onChange={(e) => {
-                setBaseUrl(e.target.value)
-                setSaved(false)
-              }}
-            />
-          </label>
-          <label className="set-field">
-            <span className="set-label">API Key</span>
-            <input
-              type="password"
-              value={apiKey}
-              placeholder={config?.hasApiKey ? '已保存 · 重填即覆盖' : '未设置'}
-              onChange={(e) => {
-                setApiKey(e.target.value)
-                setSaved(false)
-              }}
-            />
-          </label>
-          <div className="set-note">
-            密钥经 Electron safeStorage(Windows 上是 DPAPI)加密后落盘,明文不出主进程 ——
-            所以上面读不回已保存的值,只能重填或清除。
-          </div>
-          <div className="row set-actions">
-            <button
-              className="primary"
-              disabled={saving}
-              onClick={async () => {
-                setSaving(true)
-                // 密钥留空表示「不动」,不是「清空」—— 清空有单独的按钮
-                await onSaveCredentials(baseUrl.trim(), apiKey.trim() || null)
-                setApiKey('')
-                setSaving(false)
-                setSaved(true)
-              }}
-            >
-              {saving ? '保存中…' : '保存'}
-            </button>
-            {config?.hasApiKey && (
-              <button
-                disabled={saving}
-                onClick={async () => {
-                  setSaving(true)
-                  await onSaveCredentials(baseUrl.trim(), '')
-                  setSaving(false)
-                  setSaved(true)
-                }}
-              >
-                清除密钥
-              </button>
-            )}
-            {saved && <span className="hint">已保存,下次新建会话生效</span>}
-          </div>
-
-          {/* ---- 更新 ---- */}
-          <div className="ctx-sep" />
-          <div className="pop-group">更新</div>
-          <div className="set-row">
-            <span className="set-label">当前版本</span>
-            <span className="set-value mono">{update?.current ?? '—'}</span>
-          </div>
-          <UpdateSection state={update} />
-
-          {/* 主题与账号不在这儿 —— 它们跟着侧栏底部那颗按钮走。
-              这里只放「这个应用怎么连上 Claude Code」这一件事。 */}
+          <footer className="settings-footer">
+            {section === 'connection' ? <>
+              <div className="settings-save-status">{error ? <span className="set-bad" role="alert">{error}</span> : <span role="status">{saving ? '正在保存连接配置…' : saved ? '已保存,下次新建会话生效' : '更改将在下次新建会话生效'}</span>}</div>
+              <div className="settings-footer-actions">
+                {config?.hasApiKey && <button className="ghost" disabled={saving} onClick={() => void save(true)}>清除密钥</button>}
+                <button className="primary" form="settings-connection" type="submit" disabled={saving}>{saving ? '保存中…' : '保存'}</button>
+              </div>
+            </> : <><span className="settings-footer-note">仅影响应用配置,不会修改项目文件</span><button onClick={onClose}>完成</button></>}
+          </footer>
         </div>
       </div>
-    </div>
+  </dialog>
   )
 }

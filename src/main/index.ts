@@ -1,6 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, type IpcMainInvokeEvent } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { statSync } from 'node:fs'
+import { realpath, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, resolve } from 'node:path'
 import {
   deleteSession,
   forkSession,
@@ -10,10 +13,14 @@ import {
   tagSession,
 } from '@anthropic-ai/claude-agent-sdk'
 import { SessionPool } from './session-pool.js'
+import { AttachmentStore, attachmentResult } from './attachments.js'
+import { loadImageForAction, readMarkdownImage } from './markdown-image.js'
+import { MAX_ATTACHMENTS, MAX_IMAGE_BYTES, MAX_ATTACHMENT_BYTES, parseAttachmentPrompt } from '../shared/attachments.js'
 import {
   addProject,
   getConfig,
   removeProject,
+  renameProject,
   setActiveWorkspace,
   setApiKey,
   setProjectCollapsed,
@@ -40,6 +47,8 @@ import type {
   FileEntry,
   FileRead,
   ImageAttachment,
+  ImageAction,
+  ImageActionResult,
   PermissionMode,
   RewindPreview,
   SaveResult,
@@ -56,6 +65,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 let mainWindow: BrowserWindow | null = null
 const sessions = new SessionPool(emit)
 let updater: Updater | null = null
+let attachments: AttachmentStore
 
 function emit(event: ChatViewEvent): void {
   // 退出路径上 dispose 也会发事件(收卡),那时窗口可能已经销毁
@@ -194,11 +204,12 @@ async function readHistory(sessionId: string, cwd: string): Promise<TranscriptIt
     if (role !== 'user' && role !== 'assistant') continue
 
     if (typeof content === 'string') {
+      const parsed = role === 'user' ? parseAttachmentPrompt(content) : { text: content }
       // CLI 注入的记录(命令输出、压缩前言等)直播时从没画过,回放也不画
-      if (role === 'user' && isInjectedUserText(content)) continue
+      if (role === 'user' && !parsed.attachments && isInjectedUserText(content)) continue
       // 用户消息可能是被展开过的斜杠命令,还原成人看的样子
-      const shown = role === 'user' ? unexpandSlashCommand(content) : content
-      if (shown.trim()) out.push({ kind: role, text: shown, id: raw.uuid })
+      const shown = role === 'user' && !parsed.attachments ? unexpandSlashCommand(parsed.text) : parsed.text
+      if (shown.trim() || parsed.attachments?.length) out.push({ kind: role, text: shown, id: raw.uuid, ...('attachments' in parsed ? { attachments: parsed.attachments } : {}) })
       continue
     }
     if (!Array.isArray(content)) continue
@@ -206,16 +217,18 @@ async function readHistory(sessionId: string, cwd: string): Promise<TranscriptIt
     let text = ''
     let imageCount = 0
     const flushText = (): void => {
-      if (!(role === 'user' && isInjectedUserText(text))) {
-        const shown = role === 'user' ? unexpandSlashCommand(text) : text
+      const parsed = role === 'user' ? parseAttachmentPrompt(text) : { text }
+      if (!(role === 'user' && !parsed.attachments && isInjectedUserText(text))) {
+        const shown = role === 'user' && !parsed.attachments ? unexpandSlashCommand(parsed.text) : parsed.text
         // 图片正文里看不见,至少把「带了几张」还原出来;纯图消息也要占位
-        if (shown.trim() || imageCount > 0) {
+        if (shown.trim() || imageCount > 0 || parsed.attachments?.length) {
           if (role === 'user') {
             out.push({
               kind: 'user',
               text: shown,
               id: raw.uuid,
               ...(imageCount > 0 ? { images: imageCount } : {}),
+              ...(parsed.attachments?.length ? { attachments: parsed.attachments } : {}),
             })
           } else {
             out.push({ kind: 'assistant', text: shown, id: raw.uuid })
@@ -264,6 +277,39 @@ function handleChat<Args extends unknown[], Result>(
 }
 
 function registerIpc(): void {
+  attachments = new AttachmentStore(join(app.getPath('userData'), 'attachments'))
+  const requireProject = (project: string): void => {
+    if (typeof project !== 'string' || !knownProject(project)) throw new Error('此项目不存在,请重新选择。')
+  }
+  ipcMain.handle('attachments:choose', async (e, project: string) => {
+    requireProject(project)
+    const result = await dialog.showOpenDialog({
+      title: '添加附件(图片、文档或文本)', properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '图片、文档和文本', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv', 'json'] },
+        { name: '所有文件(仅接受受支持的类型)', extensions: ['*'] }],
+    })
+    if (result.canceled) return []
+    requireProject(project)
+    if (result.filePaths.length > MAX_ATTACHMENTS) throw new Error('每次最多选择 8 个附件。')
+    let selectedBytes = 0
+    for (const path of result.filePaths) {
+      try { selectedBytes += statSync(path).size } catch { /* 每个失效文件由下方给出具体错误 */ }
+    }
+    if (selectedBytes > MAX_ATTACHMENT_BYTES) throw new Error('所选附件总大小不能超过 20MB。')
+    const loaded = []
+    for (const path of result.filePaths) loaded.push(await attachmentResult(basename(path), () => attachments.fromFile(e.sender.id, project, path)))
+    return loaded
+  })
+  ipcMain.handle('attachments:add', (e, project: string, name: string, bytes: Uint8Array, pasted: boolean) => {
+    requireProject(project)
+    return attachments.add(e.sender.id, project, name, bytes, pasted === true)
+  })
+  ipcMain.handle('attachments:preview', (e, project: string, id: string) => {
+    requireProject(project)
+    return attachments.preview(e.sender.id, project, id)
+  })
+  ipcMain.handle('attachments:remove', (e, project: string, id: string) => attachments.remove(e.sender.id, project, id))
+  const projectSelections = new WeakMap<IpcMainInvokeEvent['sender'], { token: string; path: string }>()
   ipcMain.handle('doctor:check', () => runDoctor())
   ipcMain.handle('doctor:install', () => installCli())
 
@@ -290,6 +336,36 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('projects:activate', (_e, path: string) => setActiveWorkspace(path))
+  ipcMain.handle('projects:selectDirectory', async (e) => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: '选择项目源文件夹',
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    const selection = { token: randomUUID(), path: result.filePaths[0] }
+    projectSelections.set(e.sender, selection)
+    return selection
+  })
+  ipcMain.handle('projects:discardSelection', (e, token: string) => {
+    if (projectSelections.get(e.sender)?.token === token) projectSelections.delete(e.sender)
+  })
+  ipcMain.handle('projects:create', (e, token: string, name: string) => {
+    const selection = projectSelections.get(e.sender)
+    if (!selection || typeof token !== 'string' || selection.token !== token) {
+      throw new Error('请重新选择项目源文件夹。')
+    }
+    if (typeof name !== 'string') throw new Error('项目名称必须是文本。')
+    if (!statSync(selection.path).isDirectory()) throw new Error('源文件夹不存在或不是目录。')
+    const normalize = (path: string): string => process.platform === 'win32'
+      ? resolve(path).toLowerCase() : resolve(path)
+    if (getConfig().projects.some((p) => normalize(p.path) === normalize(selection.path))) {
+      throw new Error('此文件夹已添加为项目,请使用侧栏中的已有项目。')
+    }
+    const config = addProject(selection.path, name.trim() || undefined)
+    projectSelections.delete(e.sender)
+    return config
+  })
+  ipcMain.handle('projects:rename', (_e, path: string, name: string) => renameProject(path, name))
   ipcMain.handle('projects:remove', (_e, path: string) => {
     sessions.remove(path)
     return removeProject(path)
@@ -459,6 +535,51 @@ function registerIpc(): void {
       ? readProjectFile(projectPath, relPath)
       : { ok: false, reason: 'out-of-scope' },
   )
+  ipcMain.handle('files:image', (_e, projectPath: string, source: string) =>
+    knownProject(projectPath)
+      ? readMarkdownImage(projectPath, source)
+      : { ok: false, reason: 'out-of-scope' },
+  )
+  ipcMain.handle('files:imageAttach', async (e, project: string, source: string) => {
+    requireProject(project)
+    const image = await loadImageForAction(project, source)
+    requireProject(project)
+    return attachments.add(e.sender.id, project, image.name, image.bytes)
+  })
+  ipcMain.handle('files:imageAction', async (_e, project: string, source: string, action: ImageAction): Promise<ImageActionResult> => {
+    try {
+      requireProject(project)
+      if (!['copy', 'reveal', 'save'].includes(action)) throw new Error('不支持此图片操作。')
+      if (action === 'reveal' && /^(data|https?):/i.test(source)) throw new Error('网络图片没有本地原文件,请先下载副本。')
+      const image = await loadImageForAction(project, source)
+      requireProject(project)
+      if (action === 'reveal') {
+        if (!image.path) throw new Error('此图片没有本地原文件。')
+        shell.showItemInFolder(image.path)
+      } else if (action === 'copy') {
+        const bitmap = nativeImage.createFromDataURL(image.src)
+        if (bitmap.isEmpty()) throw new Error('图片无法解码,不能复制。')
+        clipboard.writeImage(bitmap)
+      } else {
+        const result = await dialog.showSaveDialog({ title: '下载图片副本', defaultPath: image.name,
+          filters: [{ name: '图片', extensions: [image.name.split('.').at(-1)!] }],
+        })
+        if (result.canceled || !result.filePath) return { ok: true, canceled: true }
+        requireProject(project)
+        if (image.path) {
+          let same = resolve(result.filePath).toLowerCase() === resolve(image.path).toLowerCase()
+          try {
+            const target = await realpath(result.filePath)
+            const [a, b] = await Promise.all([stat(image.path), stat(target)])
+            same ||= target.toLowerCase() === image.path.toLowerCase() || (a.ino !== 0 && a.ino === b.ino && a.dev === b.dev)
+          } catch { /* 新副本不存在 */ }
+          if (same) throw new Error('请选择其他位置或名称,不能覆盖原图。')
+        }
+        await writeFile(result.filePath, image.bytes)
+      }
+      return { ok: true }
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) } }
+  })
 
   // .claude 配置栏 · §10。范围锁在 claudedir.ts 里,渲染层传来的路径一律不信。
   ipcMain.handle('claude:list', (): ClaudeEntry[] => {
@@ -494,15 +615,28 @@ function registerIpc(): void {
     openSession(sessionId, viewId, workspace),
   )
 
-  handleChat('chat:send', async (_e, text: string, images?: ImageAttachment[], viewId?: string) => {
+  handleChat('chat:send', async (e, text: string, images?: ImageAttachment[], viewId?: string, attachmentIds: string[] = []) => {
     // 死会话仍可原地恢复,但切换中的空指针不能偷偷创建另一条会话。
     const current = sessions.current
     if (!current) throw new Error('会话尚未准备好,请稍后再试。')
+    if (typeof text !== 'string' || text.length > 2 * 1024 * 1024) throw new Error('消息过长,请拆分后发送。')
+    // 旧桥接的图片输入保留兼容,也必须限制大小,不允许绕过新附件校验。
+    if (images !== undefined && (!Array.isArray(images) || images.length > MAX_ATTACHMENTS || images.some((img) =>
+      !img || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(img.mediaType) || typeof img.data !== 'string' ||
+      img.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4))) throw new Error('图片参数无效或超过上限。')
+    const prepared = attachments.prepare(e.sender.id, current.options.cwd, attachmentIds, text)
+    const sendImages = [...(images ?? []), ...prepared.images]
+    if (sendImages.length + prepared.summaries.filter((a) => a.kind !== 'image').length > MAX_ATTACHMENTS ||
+      (images ?? []).reduce((sum, img) => sum + Buffer.byteLength(img.data, 'base64'), 0) +
+      prepared.summaries.reduce((sum, a) => sum + a.size, 0) > MAX_ATTACHMENT_BYTES) throw new Error('附件数量或总大小超过上限。')
+    if (!text.trim() && !sendImages.length && !prepared.summaries.length) throw new Error('消息不能为空。')
     if (current.session.dead) {
       const opened = await openSession(current.session.resumable ?? undefined, viewId, current.options.cwd)
       if (!opened || !sessions.matches(viewId ?? '')) return false
     }
-    sessions.send(text, images ?? [])
+    if (sessions.current?.options.cwd !== current.options.cwd || (viewId !== undefined && !sessions.matches(viewId))) return false
+    sessions.send(text, sendImages, prepared.summaries, prepared.prompt)
+    attachments.commit(e.sender.id, current.options.cwd, attachmentIds)
     return true
   })
 
@@ -598,4 +732,5 @@ app.on('window-all-closed', () => {
 // 直接走 quit)。这里兜底把 CLI 进程带走;dispose 幂等,两边都到也只拆一次。
 app.on('before-quit', () => {
   sessions.dispose()
+  attachments?.dispose()
 })

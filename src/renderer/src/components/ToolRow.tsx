@@ -6,6 +6,9 @@ import type { ToolRow as Row } from '../../../shared/ipc.js'
 const DIFF_FULL_LIMIT = 20
 const DIFF_HEAD_LINES = 8
 
+/** 长输出用预览代替嵌套滚动,完整内容仍可展开。 */
+const OUTPUT_PREVIEW_LINES = 16
+
 /**
  * 对话区里的工具行 —— 设计终稿 §06。
  *
@@ -15,7 +18,7 @@ const DIFF_HEAD_LINES = 8
  * memo:row 只在结果回填时换新对象,平时流式的每个 delta 都不该让
  * 已经画好的工具行重渲一遍。
  */
-function ToolRow({ row }: { row: Row }): React.JSX.Element {
+function ToolRow({ row, defaultExpanded = false }: { row: Row; defaultExpanded?: boolean }): React.JSX.Element {
   if (row.tool === 'read') {
     return (
       <div className="tool-row">
@@ -63,8 +66,8 @@ function ToolRow({ row }: { row: Row }): React.JSX.Element {
     )
   }
 
-  if (row.tool === 'bash') return <BashRow row={row} />
-  if (row.tool === 'edit') return <EditRow row={row} />
+  if (row.tool === 'bash') return <BashRow row={row} defaultExpanded={defaultExpanded} />
+  if (row.tool === 'edit') return <EditRow row={row} defaultExpanded={defaultExpanded} />
   if (row.tool === 'todo') return <TodoCard row={row} />
 
   return (
@@ -75,18 +78,24 @@ function ToolRow({ row }: { row: Row }): React.JSX.Element {
   )
 }
 
-function BashRow({ row }: { row: Extract<Row, { tool: 'bash' }> }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+function BashRow({ row, defaultExpanded }: { row: Extract<Row, { tool: 'bash' }>; defaultExpanded: boolean }): React.JSX.Element {
+  const [open, setOpen] = useState(defaultExpanded)
+  const [fullOutput, setFullOutput] = useState(false)
   const output = [row.stdout, row.stderr].filter(Boolean).join('\n').trimEnd()
+  const outputLines = output.split('\n')
+  const longOutput = outputLines.length > OUTPUT_PREVIEW_LINES
+  const shownOutput = longOutput && !fullOutput
+    ? outputLines.slice(0, OUTPUT_PREVIEW_LINES).join('\n')
+    : output
   const hasOutput = output.length > 0
   const warn = row.interrupted === true || Boolean(row.stderr?.trim()) || row.failed === true
 
   /*
-   * 多行命令必须整段摊开。
+   * 多行命令展开后必须整段显示,批准卡默认展开供用户核对。
    *
    * 原先不管几行都压进一行、超出用省略号截掉 —— 一条 cd + export + 三个 grep
    * 的命令,界面上只看得到 `cd /d/Code/...`,而真正会动你机器的是后面那几行。
-   * 要批准一件事,总得先看得见它。所以:单行照旧内联,多行另起一块全展开。
+   * 要批准一件事,总得先看得见它。所以:单行照旧内联,多行展开后另起一块显示全文。
    */
   const command = row.command.trimEnd()
   const multiline = command.includes('\n')
@@ -98,13 +107,13 @@ function BashRow({ row }: { row: Extract<Row, { tool: 'bash' }> }): React.JSX.El
         <span className="tool-name">Bash</span>
         <span className="tool-sep">·</span>
         <span className="tool-arg">{row.interrupted ? '已中断' : headline}</span>
-        {hasOutput && (
-          <button className="tool-toggle" onClick={() => setOpen((v) => !v)}>
+        {(hasOutput || (multiline && !row.interrupted)) && (
+          <button className="tool-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
             {open ? '收起' : '展开'}
           </button>
         )}
       </div>
-      {multiline && !row.interrupted && (
+      {open && multiline && !row.interrupted && (
         <pre className="tool-cmd">
           {command.split('\n').map((l, i) => (
             <span key={i} className="tool-cmd-line">
@@ -115,13 +124,26 @@ function BashRow({ row }: { row: Extract<Row, { tool: 'bash' }> }): React.JSX.El
           ))}
         </pre>
       )}
-      {open && hasOutput && <pre className="tool-output">{output}</pre>}
+      {open && hasOutput && (
+        <>
+          <pre className="tool-output">{shownOutput}</pre>
+          {longOutput && (
+            <button
+              className="tool-toggle tool-output-more"
+              aria-expanded={fullOutput}
+              onClick={() => setFullOutput((v) => !v)}
+            >
+              {fullOutput ? '收回预览' : `展开全部 ${outputLines.length} 行`}
+            </button>
+          )}
+        </>
+      )}
     </div>
   )
 }
 
-function EditRow({ row }: { row: Extract<Row, { tool: 'edit' }> }): React.JSX.Element {
-  const [open, setOpen] = useState(true)
+function EditRow({ row, defaultExpanded }: { row: Extract<Row, { tool: 'edit' }>; defaultExpanded: boolean }): React.JSX.Element {
+  const [open, setOpen] = useState(defaultExpanded)
   const lines = row.hunks.flatMap((h) => h.lines)
   const truncated = lines.length > DIFF_FULL_LIMIT
   const shown = truncated ? lines.slice(0, DIFF_HEAD_LINES) : lines
@@ -136,7 +158,7 @@ function EditRow({ row }: { row: Extract<Row, { tool: 'edit' }> }): React.JSX.El
         {row.removed > 0 && <span className="diff-del-count">−{row.removed}</span>}
         {row.failed && <span className="tool-fail">失败</span>}
         {lines.length > 0 && (
-          <button className="tool-toggle" onClick={() => setOpen((v) => !v)}>
+          <button className="tool-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
             {open ? '收起' : '展开'}
           </button>
         )}

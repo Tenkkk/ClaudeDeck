@@ -19,6 +19,7 @@ import { resolveInScope, validateJson } from '../src/main/claudedir.ts'
 import { bundledExecutablePath } from '../src/main/binary.ts'
 import { clampSidebar, clampMidcol, SIDEBAR, MIDCOL, CHAT_MIN } from '../src/renderer/src/lib/columns.ts'
 import { parseMarkdown, parseInline } from '../src/renderer/src/lib/markdown.ts'
+import { imageSource } from '../src/renderer/src/lib/image.ts'
 import { flatten } from '../src/renderer/src/lib/commands.ts'
 import { unexpandSlashCommand, isInjectedUserText } from '../src/main/history.ts'
 import { resolveInProject, isEditable } from '../src/main/claudedir.ts'
@@ -385,6 +386,9 @@ console.log('\nclaudedir —— JSON 写坏要在保存前拦住并指出行号'
 
 // ---- 三栏宽度的夹逼 --------------------------------------------------------
 {
+  eq('文件区默认阅读宽度', MIDCOL.def, 480)
+  eq('文件区允许宽屏阅读', MIDCOL.max, 960)
+  eq('收起侧栏后使用释放的空间', clampMidcol(960, { viewport: 1200, sidebar: 0 }), 840)
   const wide = { viewport: 1600, midcol: MIDCOL.def, midOpen: false }
   eq('正常范围内原样返回', clampSidebar(300, wide), 300)
   eq('拖过窄夹到下限', clampSidebar(40, wide), SIDEBAR.min)
@@ -446,6 +450,26 @@ console.log('\nmarkdown —— 正文解析')
   eq('行内代码', inline('`npm run build`'), 'code')
   eq('链接', inline('[点这里](https://example.com)'), 'link')
   eq('链接取到 href', parseInline('[x](https://example.com)')[0].href, 'https://example.com')
+  eq('图片不会退化为感叹号加链接', inline('![猫](cat.png)'), 'image')
+  eq('Windows 图片路径保持反斜杠', parseInline(String.raw`![猫](E:\code\ohmygame\.tmp-imagegen\cat.png)`)[0].src,
+    String.raw`E:\code\ohmygame\.tmp-imagegen\cat.png`)
+  eq('图片路径支持括号', parseInline('![猫](cat(1).png)')[0].src, 'cat(1).png')
+  eq('图片路径支持空格和中文', parseInline('![猫](<图片/可爱 猫.png>)')[0].src, '图片/可爱 猫.png')
+  eq('图片 title 不进入路径', parseInline('![猫](cat.png "说明")')[0].src, 'cat.png')
+  eq('图片空说明', parseInline('![](cat.png)')[0].alt, '')
+  eq('行内图片前后文本保留', inline('前 ![猫](cat.png) 后'), 'text,image,text')
+  eq('行内代码里的图片不解析', inline('`![猫](cat.png)`'), 'code')
+  eq('围栏里的图片不解析', parseMarkdown('```\n![猫](cat.png)\n```')[0].text, '![猫](cat.png)')
+  eq('未完成图片不生成图片节点', parseInline('![猫](cat.png').some((n) => n.kind === 'image'), false)
+  eq('流式补齐后生成图片节点', parseInline('![猫](cat.png)').some((n) => n.kind === 'image'), true)
+  eq('图片按文档目录解析', imageSource('cat.png', 'docs').source, 'docs/cat.png')
+  eq('绝对图片不拼文档目录', imageSource('E:/project/cat.png', 'docs').source, 'E:/project/cat.png')
+  eq('HTTPS 图片需确认加载', imageSource('https://example.com/cat.png').kind, 'remote')
+  eq('HTTP 图片不放行', imageSource('http://example.com/cat.png').kind, 'unsupported')
+  eq('执行协议不放行', imageSource('javascript:alert(1)').kind, 'unsupported')
+  eq('网络共享路径不放行', imageSource(String.raw`\\server\cat.png`).kind, 'unsupported')
+  eq('SVG data 图片不放行', imageSource('data:image/svg+xml;base64,PHN2Zz4=').kind, 'unsupported')
+  eq('PNG data 图片可显示', imageSource('data:image/png;base64,aGVsbG8=').kind, 'data')
   eq('混排顺序', inline('前 **粗** 后'), 'text,strong,text')
 
   // 反引号里的星号是字面量,不能当粗体 —— 行内代码必须先切

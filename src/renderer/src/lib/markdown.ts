@@ -19,7 +19,7 @@
  * ## 覆盖范围
  *
  * 标题、段落、围栏代码块、无序/有序列表(含嵌套一层)、引用、分隔线、表格,
- * 行内的粗体 / 斜体 / 行内代码 / 链接 / 删除线。
+ * 行内的粗体 / 斜体 / 行内代码 / 链接 / 图片 / 删除线。
  * 认不出的行一律按普通段落走 —— 宁可少画一种样式,也不能把内容吃掉。
  */
 
@@ -30,6 +30,7 @@ export type Inline =
   | { kind: 'em'; children: Inline[] }
   | { kind: 'del'; children: Inline[] }
   | { kind: 'link'; href: string; children: Inline[] }
+  | { kind: 'image'; src: string; alt: string }
 
 export type Block =
   | { kind: 'p'; content: Inline[] }
@@ -205,6 +206,39 @@ function splitRow(line: string): Inline[][] {
  * 行内解析。顺序要紧:行内代码最先切,切出来的内容不再往下解析 ——
  * 否则 `**` 这种写在反引号里的字面量会被当成粗体。
  */
+function imageMatch(src: string): string[] | null {
+  const start = /^([\s\S]*?)!\[([^\]\n]*)\]\(\s*/.exec(src)
+  if (!start) return null
+  let i = start[0].length
+  let target = ''
+  if (src[i] === '<') {
+    const end = src.indexOf('>', ++i)
+    if (end < 0) return null
+    target = src.slice(i, end)
+    i = end + 1
+  } else {
+    let depth = 0
+    while (i < src.length) {
+      const char = src[i]
+      if (char === '\\' && /[()]/.test(src[i + 1] ?? '')) {
+        target += src[i + 1]
+        i += 2
+        continue
+      }
+      if ((char === ')' && depth === 0) || (/\s/.test(char) && depth === 0)) break
+      if (char === '(') depth++
+      if (char === ')') depth--
+      target += char
+      i++
+    }
+    if (depth !== 0) return null
+  }
+  // 可选的 Markdown title 不作为路径的一部分。
+  const end = /^\s*(?:"[^"\n]*"|'[^'\n]*'|\([^()\n]*\))?\s*\)/.exec(src.slice(i))
+  if (!end || !target || /[\r\n]/.test(target)) return null
+  return [src.slice(0, i + end[0].length), start[1], start[2], target]
+}
+
 export function parseInline(src: string): Inline[] {
   const out: Inline[] = []
   let rest = src
@@ -212,6 +246,7 @@ export function parseInline(src: string): Inline[] {
   while (rest.length > 0) {
     const code = /^([\s\S]*?)(`+)([\s\S]*?)\2/.exec(rest)
     const link = /^([\s\S]*?)\[([^\]]*)\]\(([^)\s]+)[^)]*\)/.exec(rest)
+    const image = imageMatch(rest)
     const strong = /^([\s\S]*?)(\*\*|__)(?=\S)([\s\S]*?\S)\2/.exec(rest)
     const del = /^([\s\S]*?)~~(?=\S)([\s\S]*?\S)~~/.exec(rest)
     const em = /^([\s\S]*?)(?<![*\w])(\*|_)(?=\S)([^*_]*?\S)\2(?![*\w])/.exec(rest)
@@ -219,6 +254,7 @@ export function parseInline(src: string): Inline[] {
     // 谁的前缀最短谁先生效 —— 也就是在原串里出现得最靠前的那个
     const cands = [
       code && { at: code[1].length, m: code, kind: 'code' as const },
+      image && { at: image[1].length, m: image, kind: 'image' as const },
       link && { at: link[1].length, m: link, kind: 'link' as const },
       strong && { at: strong[1].length, m: strong, kind: 'strong' as const },
       del && { at: del[1].length, m: del, kind: 'del' as const },
@@ -237,6 +273,8 @@ export function parseInline(src: string): Inline[] {
 
     if (win.kind === 'code') {
       out.push({ kind: 'code', text: win.m[3] })
+    } else if (win.kind === 'image') {
+      out.push({ kind: 'image', src: win.m[3], alt: win.m[2] })
     } else if (win.kind === 'link') {
       out.push({ kind: 'link', href: win.m[3], children: parseInline(win.m[2]) })
     } else if (win.kind === 'strong') {

@@ -9,8 +9,8 @@
 
 /** 侧栏:窄于这个数,会话标题就只剩几个字了 */
 export const SIDEBAR = { min: 200, max: 420, def: 264 }
-/** .claude 中栏:窄于这个数,JSON 每行都要折 */
-export const MIDCOL = { min: 240, max: 560, def: 320 }
+/** 右侧文件区:默认留出阅读空间,仍允许拖窄查看短配置 */
+export const MIDCOL = { min: 240, max: 960, def: 480 }
 /** 对话区无论如何要留出的宽度 */
 export const CHAT_MIN = 360
 

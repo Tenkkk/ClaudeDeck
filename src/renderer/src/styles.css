@@ -1,11 +1,11 @@
 /*
  * ClaudeDeck 设计 token
  *
- * 取自《ClaudeDeck 设计终稿》第 01 节的 token 表,逐条抄录,未做目测取色。
+ * 参考 Claude 桌面公开界面的暖灰视觉语言,本项目自行适配并验证对比度。
  * 后续所有 CSS 只引用这里的变量,不写字面量色值(IMPLEMENTATION-BRIEF §8)。
  *
- * 视觉语言:纸白底、发丝线、6px 圆角、零阴影(仅弹层有)。
- * 陶土 --accent 只出现在三处:当前项、主按钮、等你决定的卡片。
+ * 视觉语言:暖灰画布、轻描边、圆角输入卡、克制阴影。
+ * 陶土 --accent 用于主按钮、已打开的文件入口与等你决定的卡片。
  *
  * 对比度硬性下限:≤14px 文字 ≥4.5:1;非文字标记(圆点、勾选框、分隔线)≥3:1。
  * --ink / --ink-2 / --muted / --muted-2 / --mark 五档按此反推,不要往浅调。
@@ -16,14 +16,18 @@
  */
 
 :root {
+  color-scheme: light;
   /* ---- 颜色 · §01 ---- */
-  --bg: #faf7f2;            /* 主区、对话区底 */
+  --bg: #faf9f5;            /* 主区、对话区底 */
   --surface: #ffffff;       /* 输入框、卡片 */
-  --raised: #fdfbf8;        /* 中栏、控件条、弹层 */
-  --bubble: #ece5da;        /* 用户气泡 */
-  --bubble-hover: #dcd3c4;  /* 气泡悬停 */
+  --raised: #f7f6f2;        /* 中栏、控件条、弹层 */
+  --sidebar: #f2f1eb;       /* 侧栏与其上方标题栏 */
+  --hover: #eae8e1;         /* 侧栏悬停 */
+  --selection: #e2dfd6;     /* 当前会话中性选中 */
+  --bubble: #eeece5;        /* 用户气泡 */
+  --bubble-hover: #e1ded5;  /* 气泡悬停 */
   --accent-tint: #f4ede5;   /* 当前项、选中格 */
-  --accent: #a75f38;        /* 主按钮、当前左条 */
+  --accent: #b65d3e;        /* 发送与主要交互 */
   --accent-ink: #8f4a2b;    /* 陶土底上的字 */
   --focus: #dfb99f;         /* 当前题描边 */
   --warn: #9c3b26;          /* 完全放行、错误、删除 */
@@ -32,20 +36,21 @@
    * 沙绿。终稿给的是 #6d7d51,但它在自己定的对比度线下差一点:
    * 白底 4.47:1、纸底 4.18:1,都没到 ≤14px 文字要求的 4.5。
    * 而它确实用在小字上(分支名、子进程胶囊、diff 的 +N 计数)。
-   * 这里等比压暗到 95%,刚好三种底都过线,色相不变。
+   * 暖灰底调整后进一步压暗,保证三种底都过线。
    * 若设计另有取值,直接覆盖这一行,`npm run contrast` 会当场告诉你过不过。
    */
-  --live: #68774d;
+  --live: #66754b;
 
   /* ---- 文字 · §01 ---- */
-  --ink: #232019;           /* 正文与标题 */
-  --ink-2: #4c463b;         /* 说明文字 */
-  --muted: #6f6759;         /* 元数据、标签 */
-  --muted-2: #756c5e;       /* 最弱一档、占位符 */
+  --ink: #2b2926;           /* 正文与标题 */
+  --ink-2: #4f4d47;         /* 说明文字 */
+  --muted: #656259;         /* 元数据、标签 */
+  --muted-2: #67625a;       /* 最弱一档、占位符 */
   --mark: #82796a;          /* 未选中的圈、勾选框 */
 
   /* ---- 描边与阴影 · §08 共用规格 ---- */
-  --border: #e0dbd1;        /* 发丝线。零阴影,分层靠它 */
+  --border: #d8d5cc;        /* 轻描边 */
+  --shadow-composer: 0 2px 12px rgba(43, 41, 38, 0.04);
   --shadow-popover: 0 12px 32px rgba(35, 32, 25, 0.16);  /* 只有弹层有 */
 
   /* ---- diff 两色 · §06 ----
@@ -57,13 +62,13 @@
    * 四套拉丁字体已打包进仓库(SIL OFL 1.1,见 fonts/LICENSES.md),
    * 由 fonts.css 声明。它们本就不含汉字,所以中文由栈里后面的
    * Noto Sans SC(装了才用)或系统的微软雅黑承担。 */
-  --font-brand: Caprasimo, Georgia, serif;
+  --font-brand: 'Source Serif 4', Georgia, serif;
   --font-ui: Figtree, 'Noto Sans SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
   --font-prose: 'Source Serif 4', 'Noto Serif SC', 'Microsoft YaHei', Georgia, serif;
   --font-mono: 'IBM Plex Mono', Consolas, 'Microsoft YaHei', monospace;
 
   /* ---- 字号 · §01 ---- */
-  --text-brand: 17px;       /* 品牌位,只用于 ClaudeDeck 这个词 */
+  --text-brand: 20px;       /* 品牌位,只用于 ClaudeDeck 这个词 */
   --text-ui-s: 12px;
   --text-ui-m: 13.5px;
   --text-ui-l: 14.5px;
@@ -74,10 +79,11 @@
   --text-mono-l: 12.5px;
 
   /* ---- 圆角 · §01 + §08 ---- */
-  --r-inline: 5px;          /* 行内元素 */
-  --r-control: 6px;         /* 控件、卡片 */
-  --r-popover: 8px;         /* 弹层、当前会话块(带正文的弹层用 --r-bubble) */
-  --r-bubble: 10px;         /* 气泡、带正文的弹层 */
+  --r-inline: 6px;          /* 行内元素 */
+  --r-control: 8px;         /* 控件、卡片 */
+  --r-popover: 10px;        /* 弹层、当前会话块 */
+  --r-bubble: 16px;         /* 气泡、带正文的弹层 */
+  --r-composer: 20px;       /* 输入卡 */
   --r-pill: 999px;          /* 胶囊 */
 
   /* ---- 间距 · §01 ---- */
@@ -103,7 +109,7 @@
 /*
  * 深色 · §16 —— 同一批变量名换一组值,圆角/间距/字号/布局一律不动。
  *
- * 深色不是浅色的反色:主色从 #a75f38 提到 #d5854f,警示色从 #9c3b26
+ * 深色不是浅色的反色:主色从 #b65d3e 提到 #d18b6d,警示色从 #9c3b26
  * 提到 #e0806a,否则在深底上都糊成一团。
  *
  * 终稿的深色表里只声明了 13 个,下面标「推导」的 6 个是按上面那条规则
@@ -114,20 +120,25 @@
  * 所以这里只需要一个选择器,不用再写一遍 prefers-color-scheme。
  */
 :root[data-theme='dark'] {
+  color-scheme: dark;
   /* ---- 终稿 §16 声明的 13 个 ---- */
-  --bg: #1a1917;            /* 偏暖,不是冷灰 */
-  --surface: #201e1c;
-  --raised: #24211f;
-  --bubble: #2a2622;
-  --bubble-hover: #332e29;
+  --bg: #262624;            /* 偏暖,不是冷灰 */
+  --surface: #30302d;
+  --raised: #33332f;
+  --sidebar: #222220;
+  --hover: #30302c;
+  --selection: #3c3c35;
+  --bubble: #373730;
+  --bubble-hover: #414138;
   --accent-tint: #2f2721;
-  --accent: #d5854f;        /* 提亮,压得住深底 */
+  --accent: #d18b6d;        /* 提亮,压得住深底 */
   --ink: #eae4d9;
   --muted: #b3a99a;
-  --muted-2: #9c9386;
-  --mark: #7d7365;          /* 未选中的圈 */
+  --muted-2: #aea597;
+  --mark: #82786a;          /* 未选中的圈 */
   --warn: #e0806a;          /* 深底上要提亮 */
-  --border: #322e2a;        /* 分层靠它,不靠阴影 */
+  --border: #494941;        /* 轻描边 */
+  --shadow-composer: 0 2px 12px rgba(0, 0, 0, 0.12);
 
   /* ---- 推导:原稿未声明 ---- */
   --ink-2: #cfc7ba;         /* 落在 --ink 与 --muted 之间,同浅色的相对位置 */

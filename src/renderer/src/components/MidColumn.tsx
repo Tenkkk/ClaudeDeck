@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import Markdown from './Markdown.js'
 import type { SaveResult } from '../../../shared/ipc.js'
 
 /**
- * `.claude` 读写中栏 —— 设计终稿 §10。264 + 320 + 剩下的。
+ * 右侧文件内容区:Markdown 阅读预览与原始源码共用同一份草稿。
  *
  * **底部没有提示条也没有按钮。** 改动只用文件名左边那颗点说,`Ctrl S` 保存。
  * 关掉或切走时才拦一次 —— 边改边弹条是噪音。
@@ -47,6 +48,9 @@ export default function MidColumn({
   const [loading, setLoading] = useState(true)
   /** 只有 .claude 里的配置和项目根的 CLAUDE.md 可写,其余一律只读 */
   const [editable, setEditable] = useState(false)
+  const markdown = /\.(md|markdown)$/i.test(relPath)
+  const [preview, setPreview] = useState(markdown)
+  const [expanded, setExpanded] = useState(false)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
 
@@ -113,7 +117,13 @@ export default function MidColumn({
   const lines = text.split('\n')
 
   return (
-    <aside className="midcol">
+    <aside className={`midcol file-content${expanded ? ' expanded' : ''}`} onKeyDown={(e) => {
+      if (editable && !loading && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        void save()
+      }
+      if (expanded && e.key === 'Escape') setExpanded(false)
+    }}>
       <div className="midcol-head">
         {onBack && (
           <button className="ghost icon-btn midcol-back" title="回到文件树" onClick={requestClose}>
@@ -123,7 +133,7 @@ export default function MidColumn({
         <div className="midcol-title">
           {/* 改动只用这颗点说 */}
           {dirty && <span className="dirty-dot" aria-label="有未保存的改动" />}
-          <span className="midcol-name">{relPath.split('/').pop()}</span>
+          <span className="midcol-name" title={relPath}>{relPath.split('/').pop()}</span>
         </div>
         <span className="midcol-crumb">
           {projectName} / {relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : '项目根'}
@@ -135,6 +145,18 @@ export default function MidColumn({
         </button>
       </div>
 
+      <div className="file-toolbar">
+        {markdown && !loading && (
+          <div className="file-view-switch" aria-label="文件显示方式">
+            <button aria-pressed={preview} onClick={() => setPreview(true)}>预览</button>
+            <button aria-pressed={!preview} onClick={() => setPreview(false)}>{editable ? '编辑源码' : '源码'}</button>
+          </div>
+        )}
+        <button className="file-expand" aria-pressed={expanded} onClick={() => setExpanded((v) => !v)}>
+          {expanded ? '恢复分栏' : '放大阅读'}
+        </button>
+      </div>
+
       {error && (
         <div className="midcol-error">
           {error.line > 0 ? `第 ${error.line} 行:` : ''}
@@ -142,28 +164,30 @@ export default function MidColumn({
         </div>
       )}
 
-      <div className="midcol-body">
-        <div className="midcol-gutter" ref={gutterRef} aria-hidden="true">
-          {lines.map((_, i) => (
-            <div key={i}>{i + 1}</div>
-          ))}
+      {preview ? (
+        <div className="file-preview">
+          {loading ? <div className="hint">正在读取…</div> : <Markdown text={text} projectPath={projectPath} baseDir={relPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/')} />}
         </div>
-        <textarea
-          ref={areaRef}
-          className="midcol-text"
-          spellCheck={false}
-          readOnly={!editable}
-          value={loading ? '' : text}
-          onScroll={syncScroll}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (editable && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-              e.preventDefault()
-              void save()
-            }
-          }}
-        />
-      </div>
+      ) : (
+        <div className="midcol-body">
+          <div className="midcol-gutter" ref={gutterRef} aria-hidden="true">
+            {lines.map((_, i) => (
+              <div key={i}>{i + 1}</div>
+            ))}
+          </div>
+          <textarea
+            ref={areaRef}
+            className="midcol-text"
+            aria-label="文件源码"
+            wrap="off"
+            spellCheck={false}
+            readOnly={!editable}
+            value={loading ? '' : text}
+            onScroll={syncScroll}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+      )}
 
       {confirming && (
         <div className="midcol-confirm">
